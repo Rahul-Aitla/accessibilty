@@ -1,5 +1,31 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import { toast } from 'sonner';
+
+import VisualHighlightOverlay from './VisualHighlightOverlay';
+
+// Returns a promise that resolves to the short link
+async function getShareableLink(result) {
+  const base = window.location.origin + window.location.pathname;
+  try {
+    const res = await fetch('http://localhost:4000/api/report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(result)
+    });
+    const data = await res.json();
+    if (data.id) {
+      return `${base}?report=${data.id}`;
+    } else {
+      throw new Error('No id returned');
+    }
+  } catch (e) {
+    // fallback to old method (base64, but warn user)
+    toast.error('Failed to generate short link, using long link. Large reports may not work.');
+    const encoded = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(result)))));
+    return `${base}?report=${encoded}`;
+  }
+}
 function downloadCSV(violations, url) {
   if (!violations.length) return;
   const headers = [
@@ -49,15 +75,19 @@ function groupBySeverity(violations) {
   });
   return groups;
 }
-
 export default function ResultsDashboard({ result }) {
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [shareLink, setShareLink] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [iframeLoaded, setIframeLoaded] = useState(false);
+  const [overlayAllowed, setOverlayAllowed] = useState(true);
+  const iframeRef = useRef(null);
 
   if (result.error) return <div className="text-red-600 font-semibold p-4 bg-red-50 rounded">{result.error}</div>;
   const violations = result.accessibility?.violations || [];
   if (!violations.length) return <div className="text-green-700 font-semibold p-4 bg-green-50 rounded">No accessibility issues found! 🎉</div>;
-    const groups = groupBySeverity(violations);
+  const groups = groupBySeverity(violations);
   // Filtering and searching
   const filteredGroups = Object.fromEntries(
     Object.entries(groups).map(([severity, issues]) => [
@@ -73,42 +103,90 @@ export default function ResultsDashboard({ result }) {
       )
     ])
   );
-    const total = violations.length;
+  const total = violations.length;
 
-    // Score calculation (simple: 100 - (issues * 2), min 0)
-    const score = Math.max(0, 100 - total * 2);
-    let badgeColor = 'bg-green-600';
-    let badgeText = 'Excellent';
-    if (score < 90 && score >= 70) { badgeColor = 'bg-yellow-400'; badgeText = 'Good'; }
-    else if (score < 70 && score >= 50) { badgeColor = 'bg-orange-500'; badgeText = 'Needs Improvement'; }
-    else if (score < 50) { badgeColor = 'bg-red-600'; badgeText = 'Poor'; }
+  // Score calculation (simple: 100 - (issues * 2), min 0)
+  const score = Math.max(0, 100 - total * 2);
+  let badgeColor = 'bg-green-600';
+  let badgeText = 'Excellent';
+  if (score < 90 && score >= 70) { badgeColor = 'bg-yellow-400'; badgeText = 'Good'; }
+  else if (score < 70 && score >= 50) { badgeColor = 'bg-orange-500'; badgeText = 'Needs Improvement'; }
+  else if (score < 50) { badgeColor = 'bg-red-600'; badgeText = 'Poor'; }
 
-    // Chart data
-    const severityData = Object.entries(groups).map(([severity, issues]) => ({
-      name: severity.charAt(0).toUpperCase() + severity.slice(1),
-      value: issues.length,
-      color: severityChartColors[severity],
-    })).filter(d => d.value > 0);
-    const ruleData = Object.values(violations.reduce((acc, v) => {
-      acc[v.id] = acc[v.id] || { name: v.id, value: 0 };
-      acc[v.id].value++;
-      return acc;
-    }, {}));
+  // Chart data
+  const severityData = Object.entries(groups).map(([severity, issues]) => ({
+    name: severity.charAt(0).toUpperCase() + severity.slice(1),
+    value: issues.length,
+    color: severityChartColors[severity],
+  })).filter(d => d.value > 0);
+  const ruleData = Object.values(violations.reduce((acc, v) => {
+    acc[v.id] = acc[v.id] || { name: v.id, value: 0 };
+    acc[v.id].value++;
+    return acc;
+  }, {}));
+
+  // Generate shareable link on demand
+  const handleCopyShareLink = async () => {
+    setGenerating(true);
+    const link = await getShareableLink(result);
+    setShareLink(link);
+    navigator.clipboard.writeText(link);
+    toast.success('Shareable link copied!');
+    setGenerating(false);
+  };
+
+  // Check overlay permission after iframe loads
+  const handleIframeLoad = () => {
+    setIframeLoaded(true);
+    try {
+      // Try to access contentDocument to check for cross-origin
+      const doc = iframeRef.current?.contentDocument;
+      if (!doc) throw new Error('No doc');
+      setOverlayAllowed(true);
+    } catch {
+      setOverlayAllowed(false);
+    }
+  };
 
   return (
     <section className="w-full max-w-4xl bg-white dark:bg-gray-900 rounded-xl shadow-lg p-8 mt-6 border border-gray-200 dark:border-gray-800 animate-fade-in">
+      <div className="flex justify-end mb-4 gap-2">
+        <button
+          className="px-4 py-2 rounded bg-primary text-white font-semibold hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary transition"
+          onClick={() => downloadCSV(violations, result.url)}
+        >
+          Download CSV
+        </button>
+        <button
+          className="px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 transition disabled:opacity-60"
+          onClick={handleCopyShareLink}
+          disabled={generating}
+        >
+          {generating ? 'Generating...' : 'Copy Shareable Link'}
+        </button>
+      </div>
       {/* Live Preview */}
       <div className="mb-8">
         <h3 className="text-lg font-semibold mb-2">Live Preview</h3>
-        <div className="w-full aspect-video rounded border overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+        <div className="w-full aspect-video rounded border overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center relative">
           <iframe
+            ref={iframeRef}
             src={result.url}
             title="Website Preview"
             className="w-full h-full border-0"
             sandbox="allow-scripts allow-same-origin"
+            onLoad={handleIframeLoad}
           />
+          {/* Visual highlight overlay for accessibility issues */}
+          {iframeLoaded && overlayAllowed && (
+            <VisualHighlightOverlay issues={violations} iframeRef={iframeRef} />
+          )}
+          {iframeLoaded && !overlayAllowed && (
+            <div className="absolute top-2 left-2 bg-yellow-200 text-yellow-900 px-3 py-1 rounded shadow text-xs z-50">
+              Visual highlighting is not available for cross-origin sites.
+            </div>
+          )}
         </div>
-        {/* TODO: Overlay highlights for issues using selectors */}
       </div>
       <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
         <span className="inline-block w-2 h-8 bg-primary rounded-l"></span>

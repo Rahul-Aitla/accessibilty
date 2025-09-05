@@ -2,8 +2,14 @@ import express from 'express';
 import cors from 'cors';
 import puppeteer from 'puppeteer';
 import { readFile } from 'fs/promises';
+import crypto from 'crypto';
 
+const app = express();
+app.use(cors());
+app.use(express.json());
 
+// In-memory report storage (for demo; use DB for production)
+const reports = {};
 
 const browser = await puppeteer.launch({
   headless: "new"   // <- fixes the warning
@@ -14,9 +20,26 @@ const axeSource = await readFile(
   'utf8'
 );
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+// Save a report and return a short id
+app.post('/api/report', (req, res) => {
+  const report = req.body;
+  if (!report || typeof report !== 'object') {
+    return res.status(400).json({ error: 'Invalid report data' });
+  }
+  const id = crypto.randomBytes(6).toString('base64url');
+  reports[id] = report;
+  res.json({ id });
+});
+
+// Retrieve a report by id
+app.get('/api/report/:id', (req, res) => {
+  const { id } = req.params;
+  const report = reports[id];
+  if (!report) {
+    return res.status(404).json({ error: 'Report not found' });
+  }
+  res.json(report);
+});
 
 app.post('/api/scan', async (req, res) => {
   const { url, audits = ['accessibility'] } = req.body;

@@ -18,6 +18,37 @@ function App() {
     }
   });
 
+  // Load scan result from shareable link if present
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const report = params.get('report');
+    if (report) {
+      // If report param looks like a short id (not base64), fetch from backend
+      if (/^[A-Za-z0-9_-]{8,}$/.test(report)) {
+        fetch(`http://localhost:4000/api/report/${report}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data && !data.error) setScanResult(data);
+            else setScanResult({ error: 'Shared report not found.' });
+          })
+          .catch(() => setScanResult({ error: 'Failed to load shared report.' }));
+      } else {
+        try {
+          // Robust base64url decode
+          let b64 = report.replace(/-/g, '+').replace(/_/g, '/');
+          while (b64.length % 4) b64 += '=';
+          const json = atob(b64);
+          const decoded = JSON.parse(json);
+          setScanResult(decoded);
+        } catch (e) {
+          setScanResult({ error: 'Failed to load shared report.' });
+          if (window.sonner) window.sonner.error('Failed to load shared report. The link may be corrupted.');
+        }
+      }
+    }
+    // eslint-disable-next-line
+  }, []);
+
   useEffect(() => {
     localStorage.setItem('scanHistory', JSON.stringify(history));
   }, [history]);
