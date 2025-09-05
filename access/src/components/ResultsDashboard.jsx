@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 function downloadCSV(violations, url) {
   if (!violations.length) return;
   const headers = [
@@ -51,27 +51,65 @@ function groupBySeverity(violations) {
 }
 
 export default function ResultsDashboard({ result }) {
+  const [filter, setFilter] = useState('all');
+  const [search, setSearch] = useState('');
 
   if (result.error) return <div className="text-red-600 font-semibold p-4 bg-red-50 rounded">{result.error}</div>;
   const violations = result.accessibility?.violations || [];
   if (!violations.length) return <div className="text-green-700 font-semibold p-4 bg-green-50 rounded">No accessibility issues found! 🎉</div>;
-  const groups = groupBySeverity(violations);
-  const total = violations.length;
+    const groups = groupBySeverity(violations);
+  // Filtering and searching
+  const filteredGroups = Object.fromEntries(
+    Object.entries(groups).map(([severity, issues]) => [
+      severity,
+      issues.filter(issue =>
+        (filter === 'all' || issue.impact === filter) &&
+        (
+          !search ||
+          issue.help.toLowerCase().includes(search.toLowerCase()) ||
+          issue.description.toLowerCase().includes(search.toLowerCase()) ||
+          (issue.nodes[0]?.target?.join(' ') || '').toLowerCase().includes(search.toLowerCase())
+        )
+      )
+    ])
+  );
+    const total = violations.length;
 
-  // Chart data
-  const severityData = Object.entries(groups).map(([severity, issues]) => ({
-    name: severity.charAt(0).toUpperCase() + severity.slice(1),
-    value: issues.length,
-    color: severityChartColors[severity],
-  })).filter(d => d.value > 0);
-  const ruleData = Object.values(violations.reduce((acc, v) => {
-    acc[v.id] = acc[v.id] || { name: v.id, value: 0 };
-    acc[v.id].value++;
-    return acc;
-  }, {}));
+    // Score calculation (simple: 100 - (issues * 2), min 0)
+    const score = Math.max(0, 100 - total * 2);
+    let badgeColor = 'bg-green-600';
+    let badgeText = 'Excellent';
+    if (score < 90 && score >= 70) { badgeColor = 'bg-yellow-400'; badgeText = 'Good'; }
+    else if (score < 70 && score >= 50) { badgeColor = 'bg-orange-500'; badgeText = 'Needs Improvement'; }
+    else if (score < 50) { badgeColor = 'bg-red-600'; badgeText = 'Poor'; }
+
+    // Chart data
+    const severityData = Object.entries(groups).map(([severity, issues]) => ({
+      name: severity.charAt(0).toUpperCase() + severity.slice(1),
+      value: issues.length,
+      color: severityChartColors[severity],
+    })).filter(d => d.value > 0);
+    const ruleData = Object.values(violations.reduce((acc, v) => {
+      acc[v.id] = acc[v.id] || { name: v.id, value: 0 };
+      acc[v.id].value++;
+      return acc;
+    }, {}));
 
   return (
     <section className="w-full max-w-4xl bg-white dark:bg-gray-900 rounded-xl shadow-lg p-8 mt-6 border border-gray-200 dark:border-gray-800 animate-fade-in">
+      {/* Live Preview */}
+      <div className="mb-8">
+        <h3 className="text-lg font-semibold mb-2">Live Preview</h3>
+        <div className="w-full aspect-video rounded border overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+          <iframe
+            src={result.url}
+            title="Website Preview"
+            className="w-full h-full border-0"
+            sandbox="allow-scripts allow-same-origin"
+          />
+        </div>
+        {/* TODO: Overlay highlights for issues using selectors */}
+      </div>
       <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
         <span className="inline-block w-2 h-8 bg-primary rounded-l"></span>
         Summary Report
@@ -94,10 +132,12 @@ export default function ResultsDashboard({ result }) {
           <span className="text-3xl font-bold text-primary">{total}</span>
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-lg font-semibold">Compliance</span>
-          <span className={total === 0 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>
-            {total === 0 ? 'Compliant' : 'Non-compliant'}
-          </span>
+          <span className="text-lg font-semibold">Score</span>
+          <span className="text-3xl font-bold">{score}</span>
+        </div>
+        <div className="flex flex-col gap-1 items-start">
+          <span className="text-lg font-semibold">Badge</span>
+          <span className={`inline-block px-3 py-1 rounded-full text-white font-semibold text-sm mt-1 ${badgeColor}`}>{badgeText}</span>
         </div>
       </div>
 
@@ -139,8 +179,30 @@ export default function ResultsDashboard({ result }) {
       </div>
 
       <h3 className="text-xl font-bold mt-8 mb-4">Detailed Issues List</h3>
+      {/* Filters/Search */}
+      <div className="flex flex-wrap gap-4 mb-4 items-center">
+        <label className="font-medium text-sm">Filter by Severity:</label>
+        <select
+          className="px-2 py-1 rounded border border-gray-300 dark:bg-gray-800 dark:text-white"
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+        >
+          <option value="all">All</option>
+          <option value="critical">Critical</option>
+          <option value="serious">Serious</option>
+          <option value="moderate">Moderate</option>
+          <option value="minor">Minor</option>
+        </select>
+        <input
+          type="text"
+          className="px-2 py-1 rounded border border-gray-300 dark:bg-gray-800 dark:text-white"
+          placeholder="Search issues..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {Object.entries(groups).map(([severity, issues]) => (
+        {Object.entries(filteredGroups).map(([severity, issues]) => (
           <div key={severity} className="mb-4">
             <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-white font-semibold mb-2 capitalize ${severityColors[severity]}`}>{severity} <span className="ml-1">({issues.length})</span></div>
             {issues.length === 0 ? <div className="ml-4 text-gray-500">No issues</div> : (
@@ -153,10 +215,23 @@ export default function ResultsDashboard({ result }) {
                     </div>
                     <div className="text-sm text-gray-600 dark:text-gray-300 mb-1">{issue.description}</div>
                     <div className="text-xs mt-1"><span className="font-semibold">Impact:</span> {issue.impact}</div>
-                    <div className="text-xs mt-1"><span className="font-semibold">WCAG:</span> {issue.tags.filter(t => t.startsWith('wcag')).join(', ')}</div>
+                    <div className="text-xs mt-1"><span className="font-semibold">WCAG:</span> {issue.tags.filter(t => t.startsWith('wcag')).map(tag => (
+                      <a
+                        key={tag}
+                        href={`https://www.w3.org/WAI/WCAG21/quickref/?showtechniques=111%2C112#${tag.replace('wcag', 'wcag').replace(/-/g, '')}`}
+                        className="underline text-blue-600 ml-1"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {tag}
+                      </a>
+                    ))}</div>
                     <div className="text-xs mt-1"><span className="font-semibold">Selector:</span> {issue.nodes[0]?.target?.join(' ')}</div>
                     <div className="text-xs mt-1"><span className="font-semibold">Snippet:</span> <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">{issue.nodes[0]?.html?.slice(0, 100)}</code></div>
                     <div className="text-xs mt-1"><span className="font-semibold">Why it matters:</span> {issue.helpUrl ? <a href={issue.helpUrl} className="underline text-blue-600" target="_blank" rel="noopener noreferrer">Learn more</a> : 'See WCAG reference.'}</div>
+                    {issue.nodes[0]?.any?.length > 0 && (
+                      <div className="text-xs mt-1"><span className="font-semibold">Suggested Fix:</span> {issue.nodes[0].any[0].message}</div>
+                    )}
                   </li>
                 ))}
               </ul>

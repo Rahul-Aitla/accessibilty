@@ -2,13 +2,26 @@ import './App.css';
 import './index.css';
 import AccessibilityForm from './components/AccessibilityForm';
 import ResultsDashboard from './components/ResultsDashboard';
-import React, { useState } from 'react';
+import ThemeToggle from './components/ThemeToggle';
+import React, { useState, useEffect } from 'react';
 import { Toaster } from 'sonner';
 
 
 function App() {
   const [scanResult, setScanResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('scanHistory') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('scanHistory', JSON.stringify(history));
+  }, [history]);
+
   const handleScan = async (url, audits = ['accessibility']) => {
     setLoading(true);
     setScanResult(null);
@@ -19,7 +32,9 @@ function App() {
         body: JSON.stringify({ url, audits })
       });
       const data = await res.json();
-      setScanResult({ url, ...data });
+      const resultObj = { url, ...data, date: new Date().toISOString() };
+      setScanResult(resultObj);
+      setHistory(prev => [resultObj, ...prev].slice(0, 10));
     } catch (e) {
       setScanResult({ error: e.message });
     }
@@ -27,10 +42,25 @@ function App() {
   };
 
   return (
-    <main className="min-h-screen bg-background text-foreground flex flex-col items-center p-4">
-      <h1 className="text-4xl font-extrabold mb-6 tracking-tight text-primary drop-shadow">Accessibility Analyzer</h1>
-      <AccessibilityForm onScan={handleScan} loading={loading} />
-      {scanResult && <ResultsDashboard result={scanResult} />}
+    <main className="min-h-screen bg-background text-foreground flex flex-col md:flex-row items-start p-4">
+      <ThemeToggle />
+      <aside className="w-full md:w-64 md:mr-8 mb-6 md:mb-0">
+        <h2 className="text-lg font-bold mb-2">Scan History</h2>
+        <ul className="space-y-2">
+          {history.length === 0 && <li className="text-gray-500 text-sm">No scans yet.</li>}
+          {history.map((item, idx) => (
+            <li key={idx} className="border rounded p-2 bg-gray-50 dark:bg-gray-800 cursor-pointer hover:bg-primary/10" onClick={() => setScanResult(item)}>
+              <div className="truncate text-sm font-medium">{item.url}</div>
+              <div className="text-xs text-gray-500">{new Date(item.date).toLocaleString()}</div>
+            </li>
+          ))}
+        </ul>
+      </aside>
+      <section className="flex-1 flex flex-col items-center w-full">
+        <h1 className="text-4xl font-extrabold mb-6 tracking-tight text-primary drop-shadow">Accessibility Analyzer</h1>
+        <AccessibilityForm onScan={handleScan} loading={loading} />
+        {scanResult && <ResultsDashboard result={scanResult} />}
+      </section>
       <Toaster richColors position="top-center" />
     </main>
   );
