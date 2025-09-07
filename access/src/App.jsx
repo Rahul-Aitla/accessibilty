@@ -56,22 +56,29 @@ function App() {
     localStorage.setItem('scanHistory', JSON.stringify(history));
   }, [history]);
 
-  const handleScan = async (url, audits = ['accessibility'], brandColors = []) => {
+    const handleScan = async (url, audits = ['accessibility'], brandColors = []) => {
     setLoading(true);
     setScanResult(null);
     try {
       const body = { url, audits };
       if (brandColors && brandColors.length > 0) body.brandColors = brandColors;
+      
       const res = await fetch(`${API_URL}/api/scan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
+      
+      if (!res.ok) {
+        throw new Error(`Server error: ${res.status} ${res.statusText}`);
+      }
+      
       const data = await res.json();
       const resultObj = { url, ...data, date: new Date().toISOString() };
       setScanResult(resultObj);
       setHistory(prev => [resultObj, ...prev].slice(0, 10));
     } catch (e) {
+      console.error('Scan error:', e);
       setScanResult({ error: e.message });
     }
     setLoading(false);
