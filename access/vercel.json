@@ -1,5 +1,6 @@
 {
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "http://localhost:4000/api/$1" }
-  ]
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "installCommand": "npm install"
 }

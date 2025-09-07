@@ -18,6 +18,9 @@ function App() {
     }
   });
 
+  // Get API URL from environment variables
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
   // Load scan result from shareable link if present
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -25,7 +28,7 @@ function App() {
     if (report) {
       // If report param looks like a short id (not base64), fetch from backend
       if (/^[A-Za-z0-9_-]{8,}$/.test(report)) {
-        fetch(`http://localhost:4000/api/report/${report}`)
+        fetch(`${API_URL}/api/report/${report}`)
           .then(res => res.json())
           .then(data => {
             if (data && !data.error) setScanResult(data);
@@ -59,7 +62,7 @@ function App() {
     try {
       const body = { url, audits };
       if (brandColors && brandColors.length > 0) body.brandColors = brandColors;
-      const res = await fetch('http://localhost:4000/api/scan', {
+      const res = await fetch(`${API_URL}/api/scan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
