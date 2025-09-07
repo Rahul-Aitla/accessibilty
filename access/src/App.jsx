@@ -53,14 +53,16 @@ function App() {
     localStorage.setItem('scanHistory', JSON.stringify(history));
   }, [history]);
 
-  const handleScan = async (url, audits = ['accessibility']) => {
+  const handleScan = async (url, audits = ['accessibility'], brandColors = []) => {
     setLoading(true);
     setScanResult(null);
     try {
+      const body = { url, audits };
+      if (brandColors && brandColors.length > 0) body.brandColors = brandColors;
       const res = await fetch('http://localhost:4000/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, audits })
+        body: JSON.stringify(body)
       });
       const data = await res.json();
       const resultObj = { url, ...data, date: new Date().toISOString() };
