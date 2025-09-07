@@ -85,6 +85,17 @@ app.post('/api/scan', async (req, res) => {
   let browser;
   try {
     console.log('Starting scan for:', url);
+    console.log('Environment:', process.env.NODE_ENV);
+    console.log('Available browsers path:', process.env.PLAYWRIGHT_BROWSERS_PATH);
+    
+    // Try to get the executable path first
+    try {
+      const executablePath = chromium.executablePath();
+      console.log('Chromium executable path:', executablePath);
+    } catch (pathError) {
+      console.log('Could not get executable path:', pathError.message);
+    }
+    
     browser = await chromium.launch({ 
       headless: true,
       args: [
@@ -97,8 +108,7 @@ app.post('/api/scan', async (req, res) => {
         "--no-first-run",
         "--no-zygote",
         "--single-process", // Important for Render free tier
-        "--memory-pressure-off",
-        "--max_old_space_size=4096"
+        "--memory-pressure-off"
       ] 
     });
     console.log('Browser launched successfully');
