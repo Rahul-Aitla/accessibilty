@@ -55,7 +55,8 @@ app.post('/api/scan', async (req, res) => {
   }
   let browser;
   try {
-    const browser = await chromium.launch({ 
+    console.log('Starting scan for:', url);
+    browser = await chromium.launch({ 
       headless: true,
       args: [
         "--no-sandbox",
@@ -64,8 +65,11 @@ app.post('/api/scan', async (req, res) => {
         "--disable-extensions"
       ] 
     });
+    console.log('Browser launched successfully');
     const page = await browser.newPage();
+    console.log('Page created, navigating to:', url);
     await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+    console.log('Page loaded successfully');
     const results = {};
     if (audits.includes('accessibility')) {
       await page.addScriptTag({ content: axeSource });
@@ -200,10 +204,19 @@ app.post('/api/scan', async (req, res) => {
       if (audits.includes('pwa')) results.pwa = lhResult.lhr.categories.pwa;
     }
     await browser.close();
+    console.log('Scan completed successfully for:', url);
     res.json(results);
   } catch (err) {
-    if (browser) await browser.close();
-    res.status(500).json({ error: err.message });
+    console.error('Scan error for', url, ':', err.message);
+    console.error('Full error:', err);
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (closeErr) {
+        console.error('Error closing browser:', closeErr);
+      }
+    }
+    res.status(500).json({ error: err.message, stack: err.stack });
   }
 });
 
