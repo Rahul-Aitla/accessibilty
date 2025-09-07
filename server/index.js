@@ -19,19 +19,8 @@ app.use(express.json());
 // In-memory report storage (for demo; use DB for production)
 const reports = {};
 
-const browser = await puppeteer.launch({
-  headless: "new",
-  args: [
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
-    "--disable-dev-shm-usage",
-    "--disable-accelerated-2d-canvas",
-    "--no-first-run",
-    "--no-zygote",
-    "--single-process",
-    "--disable-gpu"
-  ]
-});
+// Don't launch browser at startup - launch per request instead
+// const browser = await puppeteer.launch({...
 
 const axeSource = await readFile(
   new URL('node_modules/axe-core/axe.min.js', import.meta.url),
@@ -66,7 +55,16 @@ app.post('/api/scan', async (req, res) => {
   }
   let browser;
   try {
-    browser = await puppeteer.launch({ args: ['--no-sandbox'] });
+    browser = await puppeteer.launch({ 
+      headless: "new",
+      executablePath: process.env.NODE_ENV === 'production' ? '/usr/bin/google-chrome-stable' : undefined,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox", 
+        "--disable-dev-shm-usage",
+        "--disable-extensions"
+      ] 
+    });
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
     const results = {};

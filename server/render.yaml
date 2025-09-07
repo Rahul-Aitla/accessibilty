@@ -3,9 +3,13 @@ services:
     name: accessibility-analyzer-server
     env: node
     plan: free
-    buildCommand: "npm install"
+    buildCommand: "npm ci --only=production && npm rebuild puppeteer"
     startCommand: "node index.js"
     envVars:
       - key: NODE_ENV
         value: production
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: false
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: /usr/bin/google-chrome-stable
     autoDeploy: true
