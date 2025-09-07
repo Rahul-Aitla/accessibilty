@@ -13,7 +13,36 @@ try {
 }
 
 const app = express();
-app.use(cors());
+
+// Configure CORS to allow requests from your Vercel frontend
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:5173',  // Local development
+      'http://localhost:3000',  // Alternative local port
+      'https://accessibilty.vercel.app'  // Your Vercel deployment
+    ];
+    
+    // Allow any Vercel preview deployments
+    if (origin.endsWith('.vercel.app')) {
+      return callback(null, true);
+    }
+    
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // In-memory report storage (for demo; use DB for production)
