@@ -4,6 +4,16 @@ import { chromium } from 'playwright';
 import { readFile } from 'fs/promises';
 import crypto from 'crypto';
 
+// Import Puppeteer as fallback
+let puppeteer;
+try {
+  puppeteer = await import('puppeteer');
+  console.log('Puppeteer available as fallback');
+} catch (e) {
+  console.log('Puppeteer not available as fallback');
+  puppeteer = null;
+}
+
 // For Lighthouse audits
 let lighthouse;
 try {
@@ -83,69 +93,106 @@ app.post('/api/scan', async (req, res) => {
     return res.status(400).json({ error: 'Invalid URL' });
   }
   let browser;
+  let usingPuppeteer = false;
+  
   try {
     console.log('Starting scan for:', url);
     console.log('Environment:', process.env.NODE_ENV);
     
-    // Check if Chromium is available before attempting to launch
-    let executablePath;
+    // Try Playwright first
     try {
-      executablePath = chromium.executablePath();
-      console.log('Chromium executable found at:', executablePath);
-      
-      // If the path points to headless_shell but chrome exists, use chrome instead
-      if (executablePath.includes('headless_shell')) {
-        const chromePath = executablePath.replace('headless_shell', 'chrome');
-        const { existsSync } = await import('fs');
-        if (existsSync(chromePath)) {
-          executablePath = chromePath;
-          console.log('Using chrome instead of headless_shell at:', executablePath);
-        }
-      }
-    } catch (pathError) {
-      console.log('Chromium executable not found, attempting to install...');
-      // Try to install chromium if not found
+      // Check if Chromium is available before attempting to launch
+      let executablePath;
       try {
-        const { execSync } = await import('child_process');
-        execSync('npx playwright install chromium', { stdio: 'inherit' });
         executablePath = chromium.executablePath();
-        console.log('Chromium installed successfully at:', executablePath);
-      } catch (installError) {
-        console.error('Failed to install Chromium:', installError.message);
-        return res.status(500).json({ 
-          error: 'Browser not available on this server', 
-          details: 'Chromium browser could not be found or installed' 
+        console.log('Chromium executable found at:', executablePath);
+        
+        // Verify the file actually exists
+        const { existsSync } = await import('fs');
+        if (!existsSync(executablePath)) {
+          throw new Error(`Executable doesn't exist at ${executablePath}`);
+        }
+        
+        // If the path points to headless_shell but chrome exists, use chrome instead
+        if (executablePath.includes('headless_shell')) {
+          const chromePath = executablePath.replace('headless_shell', 'chrome');
+          if (existsSync(chromePath)) {
+            executablePath = chromePath;
+            console.log('Using chrome instead of headless_shell at:', executablePath);
+          }
+        }
+      } catch (pathError) {
+        console.log('Chromium executable not found:', pathError.message);
+        throw new Error('Playwright Chromium not available');
+      }
+      
+      browser = await chromium.launch({ 
+        headless: true,
+        executablePath: executablePath,
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox", 
+          "--disable-dev-shm-usage",
+          "--disable-extensions",
+          "--disable-gpu",
+          "--disable-web-security",
+          "--no-first-run",
+          "--no-zygote",
+          "--single-process",
+          "--memory-pressure-off"
+        ] 
+      });
+      console.log('Playwright browser launched successfully');
+      
+    } catch (playwrightError) {
+      console.log('Playwright failed:', playwrightError.message);
+      
+      // Fallback to Puppeteer
+      if (puppeteer) {
+        console.log('Attempting Puppeteer fallback...');
+        browser = await puppeteer.default.launch({
+          headless: true,
+          args: [
+            "--no-sandbox",
+            "--disable-setuid-sandbox", 
+            "--disable-dev-shm-usage",
+            "--disable-extensions",
+            "--disable-gpu",
+            "--disable-web-security",
+            "--no-first-run",
+            "--no-zygote",
+            "--single-process",
+            "--memory-pressure-off"
+          ]
         });
+        usingPuppeteer = true;
+        console.log('Puppeteer browser launched successfully');
+      } else {
+        throw new Error('Both Playwright and Puppeteer failed to launch browser');
       }
     }
-    
-    browser = await chromium.launch({ 
-      headless: true,
-      executablePath: executablePath, // Use the found executable path
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox", 
-        "--disable-dev-shm-usage",
-        "--disable-extensions",
-        "--disable-gpu",
-        "--disable-web-security",
-        "--no-first-run",
-        "--no-zygote",
-        "--single-process", // Important for Render free tier
-        "--memory-pressure-off"
-      ] 
-    });
     console.log('Browser launched successfully');
     const page = await browser.newPage();
     
     // Set a smaller viewport to reduce memory usage
-    await page.setViewportSize({ width: 1280, height: 720 });
+    if (usingPuppeteer) {
+      await page.setViewport({ width: 1280, height: 720 });
+    } else {
+      await page.setViewportSize({ width: 1280, height: 720 });
+    }
     
     console.log('Page created, navigating to:', url);
-    await page.goto(url, { 
-      waitUntil: 'networkidle', 
-      timeout: 20000  // Reduced timeout for Render
-    });
+    if (usingPuppeteer) {
+      await page.goto(url, { 
+        waitUntil: 'networkidle0', 
+        timeout: 20000
+      });
+    } else {
+      await page.goto(url, { 
+        waitUntil: 'networkidle', 
+        timeout: 20000  // Reduced timeout for Render
+      });
+    }
     console.log('Page loaded successfully');
     const results = {};
     if (audits.includes('accessibility')) {

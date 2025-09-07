@@ -10,7 +10,8 @@
     "axe-core": "^4.8.2",
     "cors": "^2.8.5",
     "express": "^4.18.2",
-    "playwright": "^1.40.0"
+    "playwright": "^1.40.0",
+    "puppeteer": "^21.0.0"
   }
 }
 
