@@ -86,14 +86,27 @@ app.post('/api/scan', async (req, res) => {
   try {
     console.log('Starting scan for:', url);
     console.log('Environment:', process.env.NODE_ENV);
-    console.log('Available browsers path:', process.env.PLAYWRIGHT_BROWSERS_PATH);
     
-    // Try to get the executable path first
+    // Check if Chromium is available before attempting to launch
+    let executablePath;
     try {
-      const executablePath = chromium.executablePath();
-      console.log('Chromium executable path:', executablePath);
+      executablePath = chromium.executablePath();
+      console.log('Chromium executable found at:', executablePath);
     } catch (pathError) {
-      console.log('Could not get executable path:', pathError.message);
+      console.log('Chromium executable not found, attempting to install...');
+      // Try to install chromium if not found
+      try {
+        const { execSync } = await import('child_process');
+        execSync('npx playwright install chromium', { stdio: 'inherit' });
+        executablePath = chromium.executablePath();
+        console.log('Chromium installed successfully at:', executablePath);
+      } catch (installError) {
+        console.error('Failed to install Chromium:', installError.message);
+        return res.status(500).json({ 
+          error: 'Browser not available on this server', 
+          details: 'Chromium browser could not be found or installed' 
+        });
+      }
     }
     
     browser = await chromium.launch({ 
