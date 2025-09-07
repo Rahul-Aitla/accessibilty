@@ -4,7 +4,8 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "postinstall": "npm rebuild puppeteer"
   },
   "dependencies": {
     "@radix-ui/react-icons": "^1.3.2",
@@ -15,5 +16,8 @@
     "puppeteer": "^24.19.0",
     "recharts": "^3.1.2",
     "sonner": "^2.0.7"
+  },
+  "puppeteer": {
+    "default_browser_revision": "124.0.6367.207"
   }
 }
