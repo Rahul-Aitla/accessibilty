@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import puppeteer from 'puppeteer';
+import { chromium } from 'playwright';
 import { readFile } from 'fs/promises';
 import crypto from 'crypto';
 
@@ -55,24 +55,17 @@ app.post('/api/scan', async (req, res) => {
   }
   let browser;
   try {
-    browser = await puppeteer.launch({ 
+    const browser = await chromium.launch({ 
       headless: true,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN || (process.env.NODE_ENV === 'production' ? '/usr/bin/google-chrome-stable' : undefined),
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox", 
         "--disable-dev-shm-usage",
-        "--disable-extensions",
-        "--disable-gpu",
-        "--disable-background-timer-throttling",
-        "--disable-backgrounding-occluded-windows",
-        "--disable-renderer-backgrounding",
-        "--disable-features=TranslateUI",
-        "--disable-default-apps"
+        "--disable-extensions"
       ] 
     });
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
     const results = {};
     if (audits.includes('accessibility')) {
       await page.addScriptTag({ content: axeSource });

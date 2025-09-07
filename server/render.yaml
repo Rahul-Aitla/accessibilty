@@ -3,15 +3,11 @@ services:
     name: accessibility-analyzer-server
     env: node
     plan: free
-    buildCommand: "npm install && npm rebuild puppeteer && npm cache clean --force"
+    buildCommand: "npm install && npx playwright install chromium"
     startCommand: "node index.js"
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
-        value: true
-      - key: PUPPETEER_EXECUTABLE_PATH
-        value: /usr/bin/google-chrome-stable
-      - key: CHROME_BIN
-        value: /usr/bin/google-chrome-stable
+      - key: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
+        value: false
     autoDeploy: true
