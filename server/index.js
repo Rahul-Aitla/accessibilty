@@ -92,6 +92,16 @@ app.post('/api/scan', async (req, res) => {
     try {
       executablePath = chromium.executablePath();
       console.log('Chromium executable found at:', executablePath);
+      
+      // If the path points to headless_shell but chrome exists, use chrome instead
+      if (executablePath.includes('headless_shell')) {
+        const chromePath = executablePath.replace('headless_shell', 'chrome');
+        const { existsSync } = await import('fs');
+        if (existsSync(chromePath)) {
+          executablePath = chromePath;
+          console.log('Using chrome instead of headless_shell at:', executablePath);
+        }
+      }
     } catch (pathError) {
       console.log('Chromium executable not found, attempting to install...');
       // Try to install chromium if not found
@@ -111,6 +121,7 @@ app.post('/api/scan', async (req, res) => {
     
     browser = await chromium.launch({ 
       headless: true,
+      executablePath: executablePath, // Use the found executable path
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox", 

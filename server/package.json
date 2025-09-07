@@ -4,7 +4,6 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "postinstall": "npx playwright install chromium",
     "start": "node index.js"
   },
   "dependencies": {
