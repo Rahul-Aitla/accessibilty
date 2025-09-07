@@ -20,6 +20,9 @@ function App() {
 
   // Get API URL from environment variables
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+  
+  // Debug: Show API URL in production (will be visible in browser console)
+  console.log('Using API URL:', API_URL);
 
   // Load scan result from shareable link if present
   useEffect(() => {
