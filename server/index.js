@@ -91,13 +91,27 @@ app.post('/api/scan', async (req, res) => {
         "--no-sandbox",
         "--disable-setuid-sandbox", 
         "--disable-dev-shm-usage",
-        "--disable-extensions"
+        "--disable-extensions",
+        "--disable-gpu",
+        "--disable-web-security",
+        "--no-first-run",
+        "--no-zygote",
+        "--single-process", // Important for Render free tier
+        "--memory-pressure-off",
+        "--max_old_space_size=4096"
       ] 
     });
     console.log('Browser launched successfully');
     const page = await browser.newPage();
+    
+    // Set a smaller viewport to reduce memory usage
+    await page.setViewportSize({ width: 1280, height: 720 });
+    
     console.log('Page created, navigating to:', url);
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto(url, { 
+      waitUntil: 'networkidle', 
+      timeout: 20000  // Reduced timeout for Render
+    });
     console.log('Page loaded successfully');
     const results = {};
     if (audits.includes('accessibility')) {

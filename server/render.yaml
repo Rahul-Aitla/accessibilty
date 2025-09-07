@@ -3,11 +3,13 @@ services:
     name: accessibility-analyzer-server
     env: node
     plan: free
-    buildCommand: "npm install && npx playwright install chromium"
+    buildCommand: "npm install && npx playwright install --with-deps chromium"
     startCommand: "node index.js"
     envVars:
       - key: NODE_ENV
         value: production
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /opt/render/.cache/ms-playwright
       - key: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
         value: false
     autoDeploy: true
