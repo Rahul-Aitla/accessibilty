@@ -56,13 +56,19 @@ app.post('/api/scan', async (req, res) => {
   let browser;
   try {
     browser = await puppeteer.launch({ 
-      headless: "new",
-      executablePath: process.env.NODE_ENV === 'production' ? '/usr/bin/google-chrome-stable' : undefined,
+      headless: true,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN || (process.env.NODE_ENV === 'production' ? '/usr/bin/google-chrome-stable' : undefined),
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox", 
         "--disable-dev-shm-usage",
-        "--disable-extensions"
+        "--disable-extensions",
+        "--disable-gpu",
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+        "--disable-features=TranslateUI",
+        "--disable-default-apps"
       ] 
     });
     const page = await browser.newPage();
