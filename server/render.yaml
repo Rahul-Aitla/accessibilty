@@ -3,11 +3,28 @@ services:
     name: accessibility-analyzer-server
     env: node
     plan: free
-    buildCommand: "npm install && npx playwright install chromium"
+    buildCommand: "npm ci && npx playwright install chromium --with-deps"
     startCommand: "node index.js"
+    healthCheckPath: "/health"
+    numInstances: 1
+    disk:
+      name: server-disk
+      size: 1GB
+      mountPath: /tmp
     envVars:
       - key: NODE_ENV
         value: production
       - key: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
         value: false
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: 0
+      # Add your actual Gemini API key here
+      - key: GEMINI_API_KEY
+        value: AIzaSyC-qwVzDemeFSnoBssyRK1D13Oip7thJlM
+      # Add your frontend domain for CORS
+      - key: ALLOWED_ORIGINS
+        value: https://accessibility.vercel.app
+    regions:
+      - oregon
     autoDeploy: true
+    branch: main
