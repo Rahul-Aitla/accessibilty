@@ -11,12 +11,40 @@ const auditOptions = [
 ];
 
 export default function AuditOptions({ selected, setSelected, brandColors, setBrandColors }) {
+  const [brandColorError, setBrandColorError] = useState('');
+
   const handleChange = (value) => {
+    if (!setSelected) {
+      console.warn('setSelected function not provided to AuditOptions');
+      return;
+    }
+    
     setSelected((prev) =>
       prev.includes(value)
         ? prev.filter((v) => v !== value)
         : [...prev, value]
     );
+  };
+
+  const handleBrandColorChange = (e) => {
+    const value = e.target.value;
+    setBrandColors(value);
+    
+    // Validate hex colors if input is not empty
+    if (value.trim()) {
+      const colors = value.split(',').map(c => c.trim());
+      const invalidColors = colors.filter(color => 
+        !color.match(/^#[0-9A-Fa-f]{6}$/) && !color.match(/^#[0-9A-Fa-f]{3}$/)
+      );
+      
+      if (invalidColors.length > 0) {
+        setBrandColorError(`Invalid hex colors: ${invalidColors.join(', ')}`);
+      } else {
+        setBrandColorError('');
+      }
+    } else {
+      setBrandColorError('');
+    }
   };
   return (
     <fieldset className="flex flex-col gap-2 w-full" aria-label="Audit Options">
@@ -41,14 +69,33 @@ export default function AuditOptions({ selected, setSelected, brandColors, setBr
       </div>
       {selected.includes('brand-color-contrast') && (
         <div className="flex flex-col gap-1 mt-3 max-w-xs">
-          <label className="text-xs font-semibold text-gray-700 dark:text-gray-200">Brand Colors (hex, comma separated)</label>
+          <label 
+            htmlFor="brand-colors-input"
+            className="text-xs font-semibold text-gray-700 dark:text-gray-200"
+          >
+            Brand Colors (hex, comma separated)
+          </label>
           <input
+            id="brand-colors-input"
             type="text"
-            className="px-3 py-2 rounded-lg border border-yellow-400 bg-yellow-50 dark:bg-yellow-900/30 text-black dark:text-white text-base shadow-sm focus:outline-none focus:ring-2 focus:ring-yellow-400"
+            className={`px-3 py-2 rounded-lg border text-base shadow-sm focus:outline-none focus:ring-2 ${
+              brandColorError 
+                ? 'border-red-400 bg-red-50 dark:bg-red-900/30 focus:ring-red-400' 
+                : 'border-yellow-400 bg-yellow-50 dark:bg-yellow-900/30 focus:ring-yellow-400'
+            } text-black dark:text-white`}
             placeholder="#2563eb,#dc2626"
             value={brandColors}
-            onChange={e => setBrandColors(e.target.value)}
+            onChange={handleBrandColorChange}
+            aria-describedby={brandColorError ? "brand-color-error" : undefined}
           />
+          {brandColorError && (
+            <span id="brand-color-error" className="text-xs text-red-600 dark:text-red-400">
+              {brandColorError}
+            </span>
+          )}
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            Example: #ff0000,#00ff00,#0000ff
+          </span>
         </div>
       )}
     </fieldset>

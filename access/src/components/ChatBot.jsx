@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { MessageCircle, Send, X, Bot, User } from 'lucide-react';
 
 const ChatBot = ({ scanResult, websiteUrl, apiUrl }) => {
@@ -6,17 +6,37 @@ const ChatBot = ({ scanResult, websiteUrl, apiUrl }) => {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const abortControllerRef = useRef(null);
+  const messagesEndRef = useRef(null);
 
-  const sendMessage = async (message, isAutoSuggestion = false) => {
+  // Scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  const sendMessage = useCallback(async (message, isAutoSuggestion = false) => {
     if (!message.trim() && !isAutoSuggestion) return;
+    if (!websiteUrl || !apiUrl) {
+      console.error('Missing required props for ChatBot');
+      return;
+    }
 
     const userMessage = isAutoSuggestion 
       ? 'Get accessibility suggestions for this website'
-      : message;
+      : message.trim();
 
     // Add user message to chat
     const newUserMessage = {
-      id: Date.now(),
+      id: `user-${Date.now()}`,
       type: 'user',
       content: userMessage,
       timestamp: new Date()
@@ -26,16 +46,30 @@ const ChatBot = ({ scanResult, websiteUrl, apiUrl }) => {
     setInputMessage('');
     setIsLoading(true);
 
+    // Create new abort controller for this request
+    abortControllerRef.current = new AbortController();
+
     try {
+      const timeoutId = setTimeout(() => {
+        abortControllerRef.current?.abort();
+      }, 30000); // 30 second timeout
+
       const response = await fetch(`${apiUrl}/api/gemini-suggestion`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url: websiteUrl,
           scanResult: scanResult,
-          message: isAutoSuggestion ? null : message
-        })
+          message: isAutoSuggestion ? null : message.trim()
+        }),
+        signal: abortControllerRef.current.signal
       });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
       const data = await response.json();
 
@@ -45,35 +79,65 @@ const ChatBot = ({ scanResult, websiteUrl, apiUrl }) => {
 
       // Add AI response to chat
       const aiMessage = {
-        id: Date.now() + 1,
+        id: `ai-${Date.now()}`,
         type: 'ai',
-        content: data.suggestion,
+        content: data.suggestion || 'I received an empty response. Please try again.',
         timestamp: new Date()
       };
 
       setMessages(prev => [...prev, aiMessage]);
+
     } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log('Request was aborted');
+        return; // Don't show error for aborted requests
+      }
+
       console.error('Error getting AI suggestion:', error);
+      
+      let errorContent = 'Sorry, I couldn\'t provide suggestions at the moment.';
+      if (error.message.includes('fetch')) {
+        errorContent = 'Unable to connect to the AI service. Please check your connection.';
+      } else if (error.message.includes('timeout')) {
+        errorContent = 'The request timed out. Please try again with a shorter question.';
+      } else if (error.message) {
+        errorContent = `Error: ${error.message}`;
+      }
+
       const errorMessage = {
-        id: Date.now() + 1,
+        id: `error-${Date.now()}`,
         type: 'ai',
-        content: `Sorry, I couldn't provide suggestions at the moment. Error: ${error.message}`,
-        timestamp: new Date()
+        content: errorContent,
+        timestamp: new Date(),
+        isError: true
       };
+      
       setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+      abortControllerRef.current = null;
     }
+  }, [websiteUrl, apiUrl, scanResult]);
 
-    setIsLoading(false);
-  };
-
-  const handleSubmit = (e) => {
+  const handleSubmit = useCallback((e) => {
     e.preventDefault();
-    sendMessage(inputMessage);
-  };
+    if (inputMessage.trim() && !isLoading) {
+      sendMessage(inputMessage);
+    }
+  }, [inputMessage, isLoading, sendMessage]);
 
-  const getAutoSuggestion = () => {
-    sendMessage('', true);
-  };
+  const getAutoSuggestion = useCallback(() => {
+    if (!isLoading) {
+      sendMessage('', true);
+    }
+  }, [isLoading, sendMessage]);
+
+  const clearMessages = useCallback(() => {
+    setMessages([]);
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+  }, []);
 
   const formatMessage = (content) => {
     // Enhanced formatting for better readability

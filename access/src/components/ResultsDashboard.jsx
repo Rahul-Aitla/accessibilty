@@ -5,54 +5,89 @@ import { toast } from 'sonner';
 import VisualHighlightOverlay from './VisualHighlightOverlay';
 
 // Returns a promise that resolves to the short link
-async function getShareableLink(result) {
+async function getShareableLink(result, apiUrl) {
   const base = window.location.origin + window.location.pathname;
   try {
-    const res = await fetch('http://localhost:4000/api/report', {
+    const res = await fetch(`${apiUrl}/api/report`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(result)
     });
+    
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+    
     const data = await res.json();
     if (data.id) {
       return `${base}?report=${data.id}`;
     } else {
-      throw new Error('No id returned');
+      throw new Error('No id returned from server');
     }
   } catch (e) {
+    console.warn('Failed to generate short link:', e);
     // fallback to old method (base64, but warn user)
-    toast.error('Failed to generate short link, using long link. Large reports may not work.');
-    const encoded = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(result)))));
-    return `${base}?report=${encoded}`;
+    toast.warning('Using fallback link generation. Large reports may not work.');
+    try {
+      const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(result))));
+      return `${base}?report=${encoded}`;
+    } catch (encodeError) {
+      console.error('Failed to encode result:', encodeError);
+      throw new Error('Failed to generate shareable link');
+    }
   }
 }
 function downloadCSV(violations, url) {
-  if (!violations.length) return;
-  const headers = [
-    'Issue', 'Description', 'Impact', 'WCAG', 'Selector', 'Snippet', 'Help URL'
-  ];
-  const rows = violations.map(issue => [
-    issue.help,
-    issue.description,
-    issue.impact,
-    issue.tags.filter(t => t.startsWith('wcag')).join('; '),
-    issue.nodes[0]?.target?.join(' '),
-    (issue.nodes[0]?.html || '').replace(/\n/g, ' ').slice(0, 100),
-    issue.helpUrl || ''
-  ]);
-  const csvContent = [
-    [`Scanned URL: ${url}`],
-    headers,
-    ...rows
-  ].map(row => row.map(field => '"' + String(field).replace(/"/g, '""') + '"').join(',')).join('\r\n');
-  const blob = new Blob([csvContent], { type: 'text/csv' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = 'accessibility-report.csv';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  if (!violations?.length) {
+    toast.error('No violations to export');
+    return;
+  }
+  
+  try {
+    const headers = [
+      'Issue', 'Description', 'Impact', 'WCAG', 'Selector', 'Snippet', 'Help URL'
+    ];
+    const rows = violations.map(issue => [
+      issue.help || 'Unknown',
+      issue.description || 'No description',
+      issue.impact || 'Unknown',
+      issue.tags?.filter(t => t.startsWith('wcag')).join('; ') || 'Not specified',
+      issue.nodes?.[0]?.target?.join(' ') || 'Not available',
+      (issue.nodes?.[0]?.html || '').replace(/\n/g, ' ').slice(0, 100) || 'No HTML snippet',
+      issue.helpUrl || ''
+    ]);
+    
+    const csvContent = [
+      [`Scanned URL: ${url || 'Unknown'}`],
+      [`Generated: ${new Date().toISOString()}`],
+      [],
+      headers,
+      ...rows
+    ].map(row => 
+      row.map(field => 
+        '"' + String(field).replace(/"/g, '""') + '"'
+      ).join(',')
+    ).join('\r\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url_obj = URL.createObjectURL(blob);
+    link.href = url_obj;
+    link.download = `accessibility-report-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Clean up the object URL to prevent memory leaks
+    setTimeout(() => URL.revokeObjectURL(url_obj), 100);
+    
+    toast.success('CSV report downloaded successfully');
+  } catch (error) {
+    console.error('Failed to download CSV:', error);
+    toast.error('Failed to download CSV report');
+  }
 }
+
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 const severityColors = {
@@ -69,9 +104,14 @@ const severityChartColors = {
 };
 
 function groupBySeverity(violations) {
+  if (!violations?.length) return { critical: [], serious: [], moderate: [], minor: [] };
+  
   const groups = { critical: [], serious: [], moderate: [], minor: [] };
   violations.forEach(v => {
-    groups[v.impact]?.push(v);
+    const severity = v.impact || 'minor'; // Default to minor if no impact specified
+    if (groups[severity]) {
+      groups[severity].push(v);
+    }
   });
   return groups;
 }
@@ -89,19 +129,25 @@ export default function ResultsDashboard({ result }) {
   const brandColorIssues = result.brandColorContrast || [];
   if (!violations.length && !brandColorIssues.length) return <div className="text-green-700 font-semibold p-4 bg-green-50 rounded-xl shadow">No accessibility issues found! 🎉</div>;
   const groups = groupBySeverity(violations);
-  // Filtering and searching
+  // Filtering and searching with improved null safety
   const filteredGroups = Object.fromEntries(
     Object.entries(groups).map(([severity, issues]) => [
       severity,
-      issues.filter(issue =>
-        (filter === 'all' || issue.impact === filter) &&
-        (
-          !search ||
-          issue.help.toLowerCase().includes(search.toLowerCase()) ||
-          issue.description.toLowerCase().includes(search.toLowerCase()) ||
-          (issue.nodes[0]?.target?.join(' ') || '').toLowerCase().includes(search.toLowerCase())
-        )
-      )
+      issues.filter(issue => {
+        // Filter by severity
+        const matchesSeverity = filter === 'all' || issue.impact === filter;
+        
+        // Search filter with null safety
+        const matchesSearch = !search || [
+          issue.help,
+          issue.description,
+          issue.nodes?.[0]?.target?.join(' ')
+        ].some(field => 
+          field && field.toLowerCase().includes(search.toLowerCase())
+        );
+        
+        return matchesSeverity && matchesSearch;
+      })
     ])
   );
   const total = violations.length;
@@ -311,8 +357,8 @@ export default function ResultsDashboard({ result }) {
                       {issue.help}
                     </div>
                     <div className="text-sm text-gray-600 dark:text-gray-300 mb-1">{issue.description}</div>
-                    <div className="text-xs mt-1"><span className="font-semibold">Impact:</span> {issue.impact}</div>
-                    <div className="text-xs mt-1"><span className="font-semibold">WCAG:</span> {issue.tags.filter(t => t.startsWith('wcag')).map(tag => (
+                    <div className="text-xs mt-1"><span className="font-semibold">Impact:</span> {issue.impact || 'Unknown'}</div>
+                    <div className="text-xs mt-1"><span className="font-semibold">WCAG:</span> {issue.tags?.filter(t => t.startsWith('wcag')).map(tag => (
                       <a
                         key={tag}
                         href={`https://www.w3.org/WAI/WCAG21/quickref/?showtechniques=111%2C112#${tag.replace('wcag', 'wcag').replace(/-/g, '')}`}
@@ -322,11 +368,11 @@ export default function ResultsDashboard({ result }) {
                       >
                         {tag}
                       </a>
-                    ))}</div>
-                    <div className="text-xs mt-1"><span className="font-semibold">Selector:</span> {issue.nodes[0]?.target?.join(' ')}</div>
-                    <div className="text-xs mt-1"><span className="font-semibold">Snippet:</span> <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">{issue.nodes[0]?.html?.slice(0, 100)}</code></div>
+                    )) || 'Not specified'}</div>
+                    <div className="text-xs mt-1"><span className="font-semibold">Selector:</span> {issue.nodes?.[0]?.target?.join(' ') || 'Not available'}</div>
+                    <div className="text-xs mt-1"><span className="font-semibold">Snippet:</span> <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">{issue.nodes?.[0]?.html?.slice(0, 100) || 'No HTML snippet'}</code></div>
                     <div className="text-xs mt-1"><span className="font-semibold">Why it matters:</span> {issue.helpUrl ? <a href={issue.helpUrl} className="underline text-blue-600" target="_blank" rel="noopener noreferrer">Learn more</a> : 'See WCAG reference.'}</div>
-                    {issue.nodes[0]?.any?.length > 0 && (
+                    {issue.nodes?.[0]?.any?.length > 0 && (
                       <div className="text-xs mt-1"><span className="font-semibold">Suggested Fix:</span> {issue.nodes[0].any[0].message}</div>
                     )}
                   </li>

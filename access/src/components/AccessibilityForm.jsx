@@ -1,38 +1,198 @@
 
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
+import { CheckCircle, AlertCircle, Globe, Loader2 } from 'lucide-react';
 import AuditOptions from './AuditOptions';
-
 
 export default function AccessibilityForm({ onScan, loading }) {
   const [url, setUrl] = useState('');
   const [error, setError] = useState('');
   const [selectedAudits, setSelectedAudits] = useState(['accessibility']);
   const [brandColors, setBrandColors] = useState('');
+  const [websiteStatus, setWebsiteStatus] = useState(null);
+  const [checkingWebsite, setCheckingWebsite] = useState(false);
+
+  // Clear error and website status when URL changes
+  useEffect(() => {
+    if (error && url) {
+      setError('');
+    }
+    if (websiteStatus && url !== websiteStatus.url) {
+      setWebsiteStatus(null);
+    }
+  }, [url, error, websiteStatus]);
+
+  const checkWebsiteAvailability = async () => {
+    if (!url?.trim()) {
+      toast.error('Please enter a URL first');
+      return;
+    }
+
+    const normalizedUrl = normalizeUrl(url);
+    if (!validateUrl(normalizedUrl)) {
+      toast.error('Please enter a valid URL');
+      return;
+    }
+
+    setCheckingWebsite(true);
+    setWebsiteStatus(null);
+
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+    console.log('Using API URL:', apiUrl);
+
+    try {
+      // First, test basic server connectivity
+      console.log('Testing server connectivity...');
+      const healthResponse = await fetch(`${apiUrl}/health`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+      });
+
+      if (!healthResponse.ok) {
+        throw new Error(`Server not responding: ${healthResponse.status}`);
+      }
+
+      const healthData = await healthResponse.json();
+      console.log('Server health check passed:', healthData.status);
+
+      // Now try the website check endpoint
+      console.log('Checking website availability:', normalizedUrl);
+      const checkEndpoint = `${apiUrl}/api/check-website`;
+      
+      const response = await fetch(checkEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: normalizedUrl })
+      });
+
+      console.log('Website check response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API error response:', errorText);
+        
+        // Try to parse as JSON in case it's a structured error
+        try {
+          const errorJson = JSON.parse(errorText);
+          throw new Error(errorJson.error || errorJson.message || `Request failed: ${response.status}`);
+        } catch (parseError) {
+          throw new Error(`API request failed: ${response.status} - ${errorText}`);
+        }
+      }
+
+      const result = await response.json();
+      console.log('Website check result:', result);
+      setWebsiteStatus(result);
+
+      if (result.accessible) {
+        toast.success('Website is accessible and ready for scanning!');
+      } else {
+        toast.warning(`Website issue: ${result.error || result.recommendation}`);
+      }
+
+    } catch (error) {
+      console.error('Website check failed:', error);
+      
+      // More specific error handling
+      let errorMessage = 'Failed to check website availability';
+      let recommendation = 'Try scanning directly or check the issues below';
+      
+      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+        errorMessage = 'Cannot connect to backend server';
+        recommendation = `Make sure the backend server is running on ${apiUrl}`;
+      } else if (error.message.includes('Server not responding')) {
+        errorMessage = 'Backend server is not responding';
+        recommendation = 'The server may be starting up or down. Try again in a moment.';
+      } else if (error.message.includes('404') || error.message.includes('not found')) {
+        errorMessage = 'Website check feature not available';
+        recommendation = 'This feature may not be supported. Try scanning directly.';
+      } else if (error.message.includes('500')) {
+        errorMessage = 'Server internal error';
+        recommendation = 'Check server logs for details.';
+      } else {
+        errorMessage = error.message || 'Unknown error occurred';
+      }
+      
+      toast.error(errorMessage);
+      setWebsiteStatus({
+        accessible: false,
+        error: errorMessage,
+        recommendation: recommendation,
+        debug: process.env.NODE_ENV === 'development' ? {
+          originalError: error.message,
+          apiUrl: apiUrl,
+          timestamp: new Date().toISOString()
+        } : undefined
+      });
+    } finally {
+      setCheckingWebsite(false);
+    }
+  };
 
   const validateUrl = (value) => {
+    if (!value?.trim()) return false;
+    
     try {
-      const u = new URL(value);
+      const u = new URL(value.trim());
       return u.protocol === 'http:' || u.protocol === 'https:';
     } catch {
       return false;
     }
   };
 
-  const handleSubmit = (e) => {
+  const normalizeUrl = (value) => {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    
+    // Add https:// if no protocol specified
+    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+      return 'https://' + trimmed;
+    }
+    return trimmed;
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validateUrl(url)) {
-      setError('Please enter a valid URL (http/https)');
-      toast.error('Please enter a valid URL (http/https)');
+    
+    if (loading) {
+      return; // Prevent double submission
+    }
+
+    const normalizedUrl = normalizeUrl(url);
+    
+    if (!validateUrl(normalizedUrl)) {
+      const errorMsg = 'Please enter a valid URL (e.g., https://example.com)';
+      setError(errorMsg);
+      toast.error(errorMsg);
       return;
     }
+
     setError('');
-    toast.loading('Auditing website...');
+    setUrl(normalizedUrl); // Update the input with normalized URL
+    
     const brandColorsArr = selectedAudits.includes('brand-color-contrast')
       ? brandColors.split(',').map(c => c.trim()).filter(Boolean)
       : [];
-    onScan(url, selectedAudits, brandColorsArr);
+    
+    try {
+      await onScan(normalizedUrl, selectedAudits, brandColorsArr);
+    } catch (error) {
+      console.error('Scan failed:', error);
+      toast.error('Failed to start scan. Please try again.');
+    }
+  };
+
+  const handleUrlChange = (e) => {
+    const value = e.target.value;
+    setUrl(value);
+    
+    // Real-time validation feedback
+    if (value.trim() && !validateUrl(normalizeUrl(value))) {
+      setError('Invalid URL format');
+    } else {
+      setError('');
+    }
   };
 
   return (
@@ -52,14 +212,41 @@ export default function AccessibilityForm({ onScan, loading }) {
           <input
             id="website-url"
             type="url"
-            className="flex-1 px-5 py-3 rounded-r-lg border-t border-b border-r border-gray-300 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-primary bg-white dark:bg-gray-900 text-black dark:text-white text-lg shadow-sm"
+            className={`flex-1 px-5 py-3 rounded-r-lg border-t border-b border-r focus:outline-none focus:ring-2 focus:ring-primary bg-white dark:bg-gray-900 text-black dark:text-white text-lg shadow-sm transition-colors ${
+              error 
+                ? 'border-red-500 dark:border-red-400' 
+                : 'border-gray-300 dark:border-gray-700'
+            }`}
             placeholder="https://example.com"
             value={url}
-            onChange={e => setUrl(e.target.value)}
+            onChange={handleUrlChange}
+            onBlur={() => {
+              if (url.trim()) {
+                setUrl(normalizeUrl(url));
+              }
+            }}
             aria-label="Website URL"
+            aria-invalid={!!error}
+            aria-describedby={error ? "url-error" : undefined}
             required
+            autoComplete="url"
             autoFocus
           />
+          <button
+            type="button"
+            onClick={checkWebsiteAvailability}
+            className="ml-2 px-4 py-3 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-medium text-sm shadow transition focus:outline-none focus:ring-2 focus:ring-blue-400 flex items-center gap-2 disabled:opacity-60"
+            disabled={checkingWebsite || loading}
+            aria-label="Check website availability"
+            title="Quick check if website is accessible"
+          >
+            {checkingWebsite ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Globe className="h-4 w-4" />
+            )}
+            Check
+          </button>
           <button
             type="submit"
             className="ml-2 px-8 py-3 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-black font-bold text-lg shadow transition focus:outline-none focus:ring-2 focus:ring-yellow-400 flex items-center gap-2 min-w-[120px] justify-center disabled:opacity-60"
@@ -77,7 +264,48 @@ export default function AccessibilityForm({ onScan, loading }) {
             )}
           </button>
         </div>
-        {error && <span className="text-red-600 text-sm mt-1 ml-2">{error}</span>}
+        {error && (
+          <span 
+            id="url-error" 
+            className="text-red-600 dark:text-red-400 text-sm mt-1 ml-2 flex items-center gap-1"
+            role="alert"
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            {error}
+          </span>
+        )}
+        
+        {websiteStatus && (
+          <div className={`mt-2 p-3 rounded-lg border text-sm ${
+            websiteStatus.accessible 
+              ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200'
+              : 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800 text-orange-800 dark:text-orange-200'
+          }`}>
+            <div className="flex items-start gap-2">
+              {websiteStatus.accessible ? (
+                <CheckCircle className="h-5 w-5 mt-0.5 text-green-600 dark:text-green-400" />
+              ) : (
+                <AlertCircle className="h-5 w-5 mt-0.5 text-orange-600 dark:text-orange-400" />
+              )}
+              <div className="flex-1">
+                <div className="font-medium">
+                  {websiteStatus.accessible ? 'Website Available' : 'Website Issue Detected'}
+                </div>
+                <div className="mt-1 text-xs">
+                  {websiteStatus.recommendation}
+                </div>
+                {websiteStatus.details && (
+                  <div className="mt-1 text-xs opacity-75">
+                    {websiteStatus.details.title && `Title: "${websiteStatus.details.title}"`}
+                    {websiteStatus.loadTime && ` • Load time: ${websiteStatus.loadTime}ms`}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       <div className="w-full">
         <AuditOptions selected={selectedAudits} setSelected={setSelectedAudits} brandColors={brandColors} setBrandColors={setBrandColors} />
