@@ -3,6 +3,14 @@ import cors from 'cors';
 import { chromium } from 'playwright';
 import { readFile } from 'fs/promises';
 import crypto from 'crypto';
+import dotenv from 'dotenv';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+// Load environment variables
+dotenv.config();
+
+// Initialize Gemini AI
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // For Lighthouse audits
 let lighthouse;
@@ -204,6 +212,91 @@ app.post('/api/scan', async (req, res) => {
   } catch (err) {
     if (browser) await browser.close();
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Gemini AI suggestion endpoint
+app.post('/api/gemini-suggestion', async (req, res) => {
+  try {
+    const { url, scanResult, message } = req.body;
+    
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(500).json({ error: 'Gemini API key not configured' });
+    }
+
+    // Try different model names in order of preference
+    const modelNames = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'];
+    let model;
+    let lastError;
+
+    for (const modelName of modelNames) {
+      try {
+        model = genAI.getGenerativeModel({ model: modelName });
+        break;
+      } catch (err) {
+        lastError = err;
+        console.log(`Failed to load model ${modelName}:`, err.message);
+      }
+    }
+
+    if (!model) {
+      return res.status(500).json({ error: `Failed to initialize any Gemini model. Last error: ${lastError?.message}` });
+    }
+    
+    let prompt;
+    if (message) {
+      // User asked a specific question
+      prompt = `You are a friendly accessibility expert. Answer this question about the website "${url}" in a conversational, helpful way: ${message}
+
+${scanResult ? `Context from scan: ${JSON.stringify(scanResult, null, 2)}` : ''}
+
+Keep your response:
+- Under 150 words
+- Practical and actionable
+- Easy to understand
+- Friendly tone`;
+    } else {
+      // Auto-generate suggestions based on scan results
+      prompt = `You are a helpful accessibility assistant. Analyze this website and give 3-4 quick, actionable tips to improve accessibility.
+
+Website: ${url}
+${scanResult ? `Scan data: ${JSON.stringify(scanResult, null, 2)}` : ''}
+
+Format your response like this:
+🔧 **Quick Fixes:**
+• [Specific action item]
+• [Specific action item]
+• [Specific action item]
+
+💡 **Why it matters:** [Brief explanation]
+
+Keep it:
+- Under 200 words total
+- Practical and specific
+- Easy to implement
+- Friendly and encouraging`;
+    }
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const suggestion = response.text();
+
+    res.json({ suggestion, url });
+  } catch (err) {
+    console.error('Gemini API error:', err);
+    
+    // Provide more specific error messages
+    let errorMessage = 'Failed to get AI suggestion: ' + err.message;
+    
+    if (err.message.includes('API_KEY_INVALID')) {
+      errorMessage = 'Invalid Gemini API key. Please check your API key configuration.';
+    } else if (err.message.includes('QUOTA_EXCEEDED')) {
+      errorMessage = 'Gemini API quota exceeded. Please try again later.';
+    } else if (err.message.includes('models/') || err.message.includes('not found')) {
+      errorMessage = 'Gemini model not available. Please try again later.';
+    }
+    
+    res.status(500).json({ error: errorMessage });
   }
 });
 

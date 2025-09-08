@@ -3,6 +3,7 @@ import './index.css';
 import AccessibilityForm from './components/AccessibilityForm';
 import ResultsDashboard from './components/ResultsDashboard';
 import ThemeToggle from './components/ThemeToggle';
+import ChatBot from './components/ChatBot';
 import React, { useState, useEffect } from 'react';
 import { Toaster } from 'sonner';
 
@@ -121,6 +122,11 @@ function App() {
         <AccessibilityForm onScan={handleScan} loading={loading} />
         {scanResult && <ResultsDashboard result={scanResult} />}
       </section>
+      <ChatBot 
+        scanResult={scanResult} 
+        websiteUrl={scanResult?.url} 
+        apiUrl={API_URL} 
+      />
       <Toaster richColors position="top-center" />
     </main>
   );
