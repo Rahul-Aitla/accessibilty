@@ -18,11 +18,12 @@ function App() {
     }
   });
 
-  // Get API URL from environment variables and remove trailing slash
-  const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:4000').replace(/\/$/, '');
+  // Get API URL from environment variables
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
   
-  // Debug: Show API URL in production (will be visible in browser console)
-  console.log('Using API URL:', API_URL);
+  // Debug: Log the API URL being used
+  console.log('API_URL being used:', API_URL);
+  console.log('Environment variables:', import.meta.env);
 
   // Load scan result from shareable link if present
   useEffect(() => {
@@ -59,12 +60,15 @@ function App() {
     localStorage.setItem('scanHistory', JSON.stringify(history));
   }, [history]);
 
-    const handleScan = async (url, audits = ['accessibility'], brandColors = []) => {
+  const handleScan = async (url, audits = ['accessibility'], brandColors = []) => {
     setLoading(true);
     setScanResult(null);
     try {
       const body = { url, audits };
       if (brandColors && brandColors.length > 0) body.brandColors = brandColors;
+      
+      console.log('Making API call to:', `${API_URL}/api/scan`);
+      console.log('Request body:', body);
       
       const res = await fetch(`${API_URL}/api/scan`, {
         method: 'POST',
@@ -72,8 +76,18 @@ function App() {
         body: JSON.stringify(body)
       });
       
-      if (!res.ok) {
-        throw new Error(`Server error: ${res.status} ${res.statusText}`);
+      console.log('Response status:', res.status);
+      console.log('Response headers:', res.headers);
+      
+      // Check if response is actually JSON
+      const contentType = res.headers.get('content-type');
+      console.log('Content-Type:', contentType);
+      
+      if (!contentType || !contentType.includes('application/json')) {
+        // Response is not JSON, let's see what it actually is
+        const responseText = await res.text();
+        console.error('Expected JSON but got:', responseText);
+        throw new Error(`Server returned ${contentType || 'unknown content type'} instead of JSON. Response: ${responseText.substring(0, 200)}...`);
       }
       
       const data = await res.json();
