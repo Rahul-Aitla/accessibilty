@@ -3,6 +3,7 @@ import { MessageCircle, Send, X, Bot, User } from 'lucide-react';
 
 const ChatBot = ({ scanResult, websiteUrl, apiUrl }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -27,7 +28,10 @@ const ChatBot = ({ scanResult, websiteUrl, apiUrl }) => {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${apiUrl}/api/gemini-suggestion`, {
+      // Get API URL from environment variables or use default
+      const API_URL = apiUrl || import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      
+      const response = await fetch(`${API_URL}/api/gemini-suggestion`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -123,13 +127,14 @@ const ChatBot = ({ scanResult, websiteUrl, apiUrl }) => {
   if (!websiteUrl) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50">
+    <div className="fixed right-0 top-1/4 z-50">
       {/* Chat Toggle Button */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="bg-primary text-primary-foreground p-3 rounded-full shadow-lg hover:bg-primary/90 transition-colors"
+          className="bg-primary text-primary-foreground p-3 rounded-l-full shadow-lg hover:bg-primary/90 transition-colors animate-pulse ml-0 mr-0"
           title="Ask AI for accessibility suggestions"
+          aria-label="Open accessibility assistant"
         >
           <MessageCircle size={24} />
         </button>
@@ -137,23 +142,42 @@ const ChatBot = ({ scanResult, websiteUrl, apiUrl }) => {
 
       {/* Chat Window */}
       {isOpen && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl border w-80 h-96 flex flex-col">
+        <div 
+          className={`bg-white dark:bg-gray-800 rounded-l-lg shadow-xl border border-r-0 w-80 ${isMinimized ? 'h-12' : 'h-96'} flex flex-col transform transition-all duration-300 ease-in-out animate-slide-in`}
+          style={{
+            animationDuration: '0.3s',
+            animationFillMode: 'forwards'
+          }}
+        >
           {/* Header */}
           <div className="bg-primary text-primary-foreground p-3 rounded-t-lg flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Bot size={20} />
-              <span className="font-medium">AI Accessibility Assistant</span>
-            </div>
+            <Bot size={20} />
+            <span className="font-medium">AI Accessibility Assistant</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setIsMinimized(!isMinimized)}
+              className="hover:bg-primary/80 p-1 rounded"
+              title={isMinimized ? "Expand" : "Minimize"}
+            >
+              {isMinimized ? 
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="7 13 12 18 17 13"></polyline><polyline points="7 6 12 11 17 6"></polyline></svg> : 
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+              }
+            </button>
             <button
               onClick={() => setIsOpen(false)}
               className="hover:bg-primary/80 p-1 rounded"
+              title="Close"
             >
               <X size={16} />
             </button>
           </div>
+          </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          {!isMinimized && <div className="flex-1 overflow-y-auto p-3 space-y-3">
             {messages.length === 0 && (
               <div className="text-center text-gray-500 dark:text-gray-400 py-4">
                 <Bot size={32} className="mx-auto mb-2 text-primary" />
@@ -225,10 +249,10 @@ const ChatBot = ({ scanResult, websiteUrl, apiUrl }) => {
                 </div>
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Input */}
-          <form onSubmit={handleSubmit} className="p-3 border-t">
+          {!isMinimized && <form onSubmit={handleSubmit} className="p-3 border-t">
             <div className="flex gap-2">
               <input
                 type="text"
@@ -246,7 +270,7 @@ const ChatBot = ({ scanResult, websiteUrl, apiUrl }) => {
                 <Send size={16} />
               </button>
             </div>
-          </form>
+          </form>}
         </div>
       )}
     </div>

@@ -1,8 +1,11 @@
 import './App.css';
 import './index.css';
 import AccessibilityForm from './components/AccessibilityForm';
+
+
 import ResultsDashboard from './components/ResultsDashboard';
-import ThemeToggle from './components/ThemeToggle';
+import Header from './components/Header';
+import Footer from './components/Footer';
 import ChatBot from './components/ChatBot';
 import React, { useState, useEffect } from 'react';
 import { Toaster } from 'sonner';
@@ -103,32 +106,61 @@ function App() {
   };
 
   return (
-    <main className="min-h-screen bg-background text-foreground flex flex-col md:flex-row items-start p-4">
-      <ThemeToggle />
-      <aside className="w-full md:w-64 md:mr-8 mb-6 md:mb-0">
-        <h2 className="text-lg font-bold mb-2">Scan History</h2>
-        <ul className="space-y-2">
-          {history.length === 0 && <li className="text-gray-500 text-sm">No scans yet.</li>}
-          {history.map((item, idx) => (
-            <li key={idx} className="border rounded p-2 bg-gray-50 dark:bg-gray-800 cursor-pointer hover:bg-primary/10" onClick={() => setScanResult(item)}>
-              <div className="truncate text-sm font-medium">{item.url}</div>
-              <div className="text-xs text-gray-500">{new Date(item.date).toLocaleString()}</div>
-            </li>
-          ))}
-        </ul>
-      </aside>
-      <section className="flex-1 flex flex-col items-center w-full">
-        <h1 className="text-4xl font-extrabold mb-6 tracking-tight text-primary drop-shadow">Accessibility Analyzer</h1>
-        <AccessibilityForm onScan={handleScan} loading={loading} />
-        {scanResult && <ResultsDashboard result={scanResult} />}
-      </section>
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
+      {/* Skip to content link for keyboard users */}
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:p-4 focus:bg-primary focus:text-primary-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+        Skip to content
+      </a>
+      <Header />
+      <main id="main-content" className="container mx-auto flex flex-col md:flex-row items-start p-4 pt-8 flex-grow" role="main" aria-label="Main content">
+        <aside className="w-full md:w-64 md:mr-8 mb-6 md:mb-0" role="complementary" aria-label="Scan history">
+          <div className="sticky top-20">
+            <h2 className="text-lg font-bold mb-2" id="history-heading">Scan History</h2>
+            <ul className="space-y-2 max-h-[70vh] overflow-y-auto pr-2" aria-labelledby="history-heading">
+              <div aria-live="polite">
+                {history.length === 0 && <li className="text-muted-foreground text-sm">No scans yet.</li>}
+              </div>
+              {history.map((item, idx) => (
+                <li key={idx}>
+                  <button
+                    className="w-full text-left border rounded-lg p-3 bg-card text-card-foreground shadow-sm cursor-pointer hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-colors duration-200" 
+                    onClick={() => setScanResult(item)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setScanResult(item);
+                      }
+                    }}
+                    aria-label={`View scan results for ${item.url} from ${new Date(item.date).toLocaleString()}`}
+                  >
+                    <div className="truncate text-sm font-medium">{item.url}</div>
+                    <div className="text-xs text-muted-foreground">{new Date(item.date).toLocaleString()}</div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </aside>
+        <section className="flex-1 flex flex-col items-center w-full" role="region" aria-label="Accessibility analysis">
+          <h1 className="text-4xl font-extrabold mb-6 tracking-tight text-primary drop-shadow">Accessibility Analyzer</h1>
+          <AccessibilityForm onScan={handleScan} loading={loading} />
+          <div aria-live="polite" aria-atomic="true">
+            {scanResult && <ResultsDashboard result={scanResult} />}
+          </div>
+        </section>
+      </main>
+      <Footer />
+      
+      {/* ChatBot component as a side popup */}
       <ChatBot 
         scanResult={scanResult} 
         websiteUrl={scanResult?.url} 
         apiUrl={API_URL} 
+        aria-label="Accessibility assistant chatbot"
+        role="complementary"
       />
       <Toaster richColors position="top-center" />
-    </main>
+    </div>
   );
 }
 

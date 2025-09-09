@@ -58,14 +58,14 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveCo
 const severityColors = {
   critical: 'bg-red-600',
   serious: 'bg-orange-500',
-  moderate: 'bg-yellow-400',
+  moderate: 'bg-blue-500',
   minor: 'bg-blue-400',
 };
 const severityChartColors = {
   critical: '#dc2626',
   serious: '#ea580c',
-  moderate: '#eab308',
-  minor: '#3b82f6',
+  moderate: '#3b82f6',
+  minor: '#60a5fa',
 };
 
 function groupBySeverity(violations) {
@@ -110,7 +110,7 @@ export default function ResultsDashboard({ result }) {
   const score = Math.max(0, 100 - total * 2);
   let badgeColor = 'bg-green-600';
   let badgeText = 'Excellent';
-  if (score < 90 && score >= 70) { badgeColor = 'bg-yellow-400'; badgeText = 'Good'; }
+  if (score < 90 && score >= 70) { badgeColor = 'bg-blue-500'; badgeText = 'Good'; }
   else if (score < 70 && score >= 50) { badgeColor = 'bg-orange-500'; badgeText = 'Needs Improvement'; }
   else if (score < 50) { badgeColor = 'bg-red-600'; badgeText = 'Poor'; }
 
@@ -155,13 +155,13 @@ export default function ResultsDashboard({ result }) {
       <div className="mb-8">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-2xl font-extrabold text-primary flex items-center gap-2">
-            <span className="inline-block w-2 h-8 bg-yellow-400 rounded-l"></span>
+            <span className="inline-block w-2 h-8 bg-blue-500 rounded-l"></span>
             Analysis Progress
           </h2>
           <span className="text-lg font-bold text-gray-700 dark:text-gray-200">{Math.max(25, Math.min(100, 100 - total * 2))}%</span>
         </div>
         <div className="w-full h-2 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
-          <div className="h-full bg-yellow-400 transition-all" style={{ width: `${Math.max(25, Math.min(100, 100 - total * 2))}%` }}></div>
+          <div className="h-full bg-blue-500 transition-all" style={{ width: `${Math.max(25, Math.min(100, 100 - total * 2))}%` }}></div>
         </div>
       </div>
 
@@ -181,14 +181,14 @@ export default function ResultsDashboard({ result }) {
             </thead>
             <tbody>
               {violations.map((issue, idx) => (
-                <tr key={idx} className="border-b border-gray-100 dark:border-gray-700 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 transition">
+                <tr key={idx} className="border-b border-gray-100 dark:border-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition">
                   <td className="py-2 px-4 font-bold text-gray-900 dark:text-white">{issue.help}</td>
                   <td className="py-2 px-4 text-gray-700 dark:text-gray-200">{issue.description}</td>
                   <td className="py-2 px-4">
                     <span className={`inline-block px-3 py-1 rounded-full font-semibold text-xs ${
-                      issue.impact === 'critical' ? 'bg-red-100 text-red-700' :
-                      issue.impact === 'serious' ? 'bg-orange-100 text-orange-700' :
-                      issue.impact === 'moderate' ? 'bg-yellow-100 text-yellow-800' :
+                      issue.impact === 'critical' ? 'bg-red-200 text-red-800' :
+                      issue.impact === 'serious' ? 'bg-orange-200 text-orange-800' :
+                      issue.impact === 'moderate' ? 'bg-blue-200 text-blue-800' :
                       'bg-blue-100 text-blue-700'
                     }`}>
                       {issue.impact?.charAt(0).toUpperCase() + issue.impact?.slice(1) || 'Unknown'}
@@ -196,7 +196,13 @@ export default function ResultsDashboard({ result }) {
                   </td>
                   <td className="py-2 px-4">
                     {issue.nodes[0]?.any?.length > 0 ? (
-                      <span className="text-blue-600 underline cursor-pointer" tabIndex={0}>{issue.nodes[0].any[0].message}</span>
+                      <button 
+                        className="text-blue-700 dark:text-blue-400 underline cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded px-1" 
+                        tabIndex={0}
+                        aria-label={`Suggestion for ${issue.help}: ${issue.nodes[0].any[0].message}`}
+                      >
+                        {issue.nodes[0].any[0].message}
+                      </button>
                     ) : (
                       <span className="text-gray-400">-</span>
                     )}
@@ -211,7 +217,7 @@ export default function ResultsDashboard({ result }) {
       {/* Download/Share Buttons */}
       <div className="flex flex-wrap justify-end gap-3 mb-8">
         <button
-          className="px-5 py-2 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-black font-bold shadow focus:outline-none focus:ring-2 focus:ring-yellow-400 transition"
+          className="px-5 py-2 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-bold shadow focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
           onClick={() => downloadCSV(violations, result.url)}
         >
           Download CSV
@@ -242,7 +248,7 @@ export default function ResultsDashboard({ result }) {
             <VisualHighlightOverlay issues={violations} iframeRef={iframeRef} />
           )}
           {iframeLoaded && !overlayAllowed && (
-            <div className="absolute top-2 left-2 bg-yellow-200 text-yellow-900 px-3 py-1 rounded shadow text-xs z-50">
+            <div className="absolute top-2 left-2 bg-blue-200 text-blue-900 px-3 py-1 rounded shadow text-xs z-50">
               Visual highlighting is not available for cross-origin sites.
             </div>
           )}
@@ -251,11 +257,11 @@ export default function ResultsDashboard({ result }) {
 
       {/* Brand Color Issues */}
       {brandColorIssues.length > 0 && (
-        <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-6 shadow mb-8">
-          <h3 className="text-xl font-bold mb-4 text-yellow-900 dark:text-yellow-100">Brand Color Contrast & Usage Issues</h3>
+        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-6 shadow mb-8">
+          <h3 className="text-xl font-bold mb-4 text-blue-900 dark:text-blue-100">Brand Color Contrast & Usage Issues</h3>
           <ul className="space-y-3">
             {brandColorIssues.map((issue, idx) => (
-              <li key={idx} className="border rounded-lg p-4 bg-yellow-100/60 dark:bg-yellow-900/40 text-yellow-900 dark:text-yellow-100 shadow-sm">
+              <li key={idx} className="border rounded-lg p-4 bg-blue-100/60 dark:bg-blue-900/40 text-blue-900 dark:text-blue-100 shadow-sm">
                 <div className="font-semibold mb-1">{issue.type === 'contrast' ? 'Contrast Issue' : 'Usage Issue'}</div>
                 <div className="text-xs mb-1">{issue.msg}</div>
                 {issue.type === 'contrast' && (
