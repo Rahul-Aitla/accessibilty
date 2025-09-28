@@ -81,7 +81,7 @@ npm run dev
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Frontend      │    │   Backend API   │    │  Browser Pool   │
-│   (React/Vite)  │───▶│   (Node/Express)│───▶│   (Playwright)  │
+│   (React/Vite)  │───▶│  (Node/Express)│───▶│   (Playwright)  │
 │                 │    │                 │    │                 │
 │ • User Interface│    │ • Audit Engine  │    │ • Web Scraping  │
 │ • Results View  │    │ • AI Analysis   │    │ • axe-core      │
@@ -89,7 +89,7 @@ npm run dev
 └─────────────────┘    └─────────────────┘    └─────────────────┘
         │                       │                       │
         │              ┌─────────────────┐              │
-        └──────────────▶│  External APIs  │◀─────────────┘
+        └────────────▶│  External APIs  │◀─────────────┘
                        │                 │
                        │ • Google Gemini │
                        │ • Lighthouse    │
