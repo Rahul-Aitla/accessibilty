@@ -98,6 +98,10 @@ function App() {
       toast.error('Please enter a valid URL');
       return;
     }
+    
+    // Update scan count for gamification
+    const currentCount = parseInt(localStorage.getItem('scanCount') || '0');
+    localStorage.setItem('scanCount', (currentCount + 1).toString());
 
     setLoading(true);
     setScanResult(null);

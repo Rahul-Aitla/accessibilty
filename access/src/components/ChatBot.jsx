@@ -27,6 +27,17 @@ const ChatBot = ({ scanResult, websiteUrl, apiUrl }) => {
     if (!message.trim() && !isAutoSuggestion) return;
     if (!websiteUrl || !apiUrl) {
       console.error('Missing required props for ChatBot');
+      
+      // Show user-friendly error message
+      const errorMessage = {
+        id: `error-${Date.now()}`,
+        type: 'ai',
+        content: 'Configuration error: Missing website URL or API endpoint. Please reload the page or try again later.',
+        timestamp: new Date(),
+        isError: true
+      };
+      
+      setMessages(prev => [...prev, errorMessage]);
       return;
     }
 
@@ -49,10 +60,26 @@ const ChatBot = ({ scanResult, websiteUrl, apiUrl }) => {
     // Create new abort controller for this request
     abortControllerRef.current = new AbortController();
 
+    // First check if server is available
+    let serverAvailable = false;
     try {
+      const healthCheck = await fetch(`${apiUrl}/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000) // Quick 5-second timeout for health check
+      });
+      serverAvailable = healthCheck.ok;
+    } catch (error) {
+      console.warn('Server health check failed:', error);
+      // Continue anyway, the main request will handle errors
+    }
+
+    try {
+      // Reduced timeout to improve user experience
       const timeoutId = setTimeout(() => {
-        abortControllerRef.current?.abort();
-      }, 30000); // 30 second timeout
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+        }
+      }, 20000); // 20 second timeout (reduced from 30s)
 
       const response = await fetch(`${apiUrl}/api/gemini-suggestion`, {
         method: 'POST',
@@ -68,7 +95,18 @@ const ChatBot = ({ scanResult, websiteUrl, apiUrl }) => {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const errorText = await response.text();
+        let errorDetail;
+        
+        try {
+          // Try to parse error as JSON
+          const errorJson = JSON.parse(errorText);
+          errorDetail = errorJson.error || errorJson.message || `Server error: ${response.status}`;
+        } catch (e) {
+          errorDetail = `HTTP ${response.status}: ${response.statusText || errorText.substring(0, 100)}`;
+        }
+        
+        throw new Error(errorDetail);
       }
 
       const data = await response.json();
@@ -89,17 +127,32 @@ const ChatBot = ({ scanResult, websiteUrl, apiUrl }) => {
 
     } catch (error) {
       if (error.name === 'AbortError') {
-        console.log('Request was aborted');
-        return; // Don't show error for aborted requests
+        console.log('Request was aborted due to timeout');
+        
+        const timeoutMessage = {
+          id: `error-${Date.now()}`,
+          type: 'ai',
+          content: 'The request took too long to complete. This might be due to server load or complexity of your question. Would you like to try a simpler question or try again?',
+          timestamp: new Date(),
+          isError: true
+        };
+        
+        setMessages(prev => [...prev, timeoutMessage]);
+        return;
       }
 
       console.error('Error getting AI suggestion:', error);
       
       let errorContent = 'Sorry, I couldn\'t provide suggestions at the moment.';
-      if (error.message.includes('fetch')) {
-        errorContent = 'Unable to connect to the AI service. Please check your connection.';
+      
+      if (!serverAvailable) {
+        errorContent = 'The AI service appears to be offline. Please check that the backend server is running and try again.';
+      } else if (error.message.includes('fetch') || error.message.includes('network')) {
+        errorContent = 'Unable to connect to the AI service. Please check your connection and ensure the backend server is running.';
       } else if (error.message.includes('timeout')) {
-        errorContent = 'The request timed out. Please try again with a shorter question.';
+        errorContent = 'The request timed out. Please try again with a shorter question or check server performance.';
+      } else if (error.message.includes('GEMINI_API_KEY')) {
+        errorContent = 'The AI service is missing its API key. Please check the server configuration.';
       } else if (error.message) {
         errorContent = `Error: ${error.message}`;
       }
@@ -192,7 +245,7 @@ const ChatBot = ({ scanResult, websiteUrl, apiUrl }) => {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="bg-primary text-primary-foreground p-3 rounded-full shadow-lg hover:bg-primary/90 transition-colors"
+          className="bg-primary hover:bg-primary/90 text-primary-foreground p-4 rounded-full shadow-lg transition-all duration-300 hover:scale-105"
           title="Ask AI for accessibility suggestions"
         >
           <MessageCircle size={24} />
@@ -201,48 +254,62 @@ const ChatBot = ({ scanResult, websiteUrl, apiUrl }) => {
 
       {/* Chat Window */}
       {isOpen && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl border w-80 h-96 flex flex-col">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 w-96 h-[500px] flex flex-col overflow-hidden animate-fade-in">
           {/* Header */}
-          <div className="bg-primary text-primary-foreground p-3 rounded-t-lg flex items-center justify-between">
+          <div className="bg-gradient-to-r from-primary to-primary-dark text-primary-foreground p-4 rounded-t-xl flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Bot size={20} />
-              <span className="font-medium">AI Accessibility Assistant</span>
+              <Bot size={22} className="text-white" />
+              <span className="font-semibold text-lg">AI Accessibility Assistant</span>
             </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="hover:bg-primary/80 p-1 rounded"
-            >
-              <X size={16} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={clearMessages}
+                className="hover:bg-primary-dark/50 p-1.5 rounded-full transition-colors"
+                title="Clear conversation"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18"></path>
+                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                </svg>
+              </button>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="hover:bg-primary-dark/50 p-1.5 rounded-full transition-colors"
+                title="Close chat"
+              >
+                <X size={16} />
+              </button>
+            </div>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 dark:bg-gray-900">
             {messages.length === 0 && (
-              <div className="text-center text-gray-500 dark:text-gray-400 py-4">
-                <Bot size={32} className="mx-auto mb-2 text-primary" />
-                <p className="text-sm mb-3">
-                  Hi! I can help you improve the accessibility of your website.
+              <div className="text-center text-gray-500 dark:text-gray-400 py-6 flex flex-col items-center">
+                <Bot size={40} className="mx-auto mb-3 text-primary animate-pulse" />
+                <p className="text-sm mb-4 max-w-xs mx-auto">
+                  Hi! I can help you improve the accessibility of your website based on the scan results.
                 </p>
-                <div className="space-y-2">
+                <div className="space-y-3 w-full max-w-xs">
                   <button
                     onClick={getAutoSuggestion}
-                    className="block w-full bg-primary text-primary-foreground px-3 py-2 rounded text-sm hover:bg-primary/90"
+                    className="block w-full bg-primary text-primary-foreground px-4 py-2.5 rounded-lg text-sm hover:bg-primary/90 transition-colors shadow-sm font-medium"
                     disabled={isLoading}
                   >
                     ✨ Get Quick Suggestions
                   </button>
-                  <div className="grid grid-cols-1 gap-1 text-xs">
+                  <div className="grid grid-cols-2 gap-2 text-xs">
                     <button
                       onClick={() => sendMessage("How can I make this website more accessible?")}
-                      className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+                      className="bg-gray-100 dark:bg-gray-800 px-3 py-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors shadow-sm"
                       disabled={isLoading}
                     >
                       💡 General Tips
                     </button>
                     <button
                       onClick={() => sendMessage("What are the most critical issues to fix first?")}
-                      className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
+                      className="bg-gray-100 dark:bg-gray-800 px-3 py-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors shadow-sm"
                       disabled={isLoading}
                     >
                       🚨 Priority Issues
@@ -257,57 +324,67 @@ const ChatBot = ({ scanResult, websiteUrl, apiUrl }) => {
                 key={msg.id}
                 className={`flex gap-2 ${
                   msg.type === 'user' ? 'justify-end' : 'justify-start'
-                }`}
+                } animate-fade-in`}
               >
                 {msg.type === 'ai' && (
-                  <Bot size={20} className="text-primary mt-1 flex-shrink-0" />
+                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <Bot size={18} className="text-primary" />
+                  </div>
                 )}
                 <div
-                  className={`max-w-[70%] p-2 rounded-lg text-sm ${
+                  className={`max-w-[80%] p-3 rounded-2xl text-sm ${
                     msg.type === 'user'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : msg.isError
+                      ? 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-800'
+                      : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm border border-gray-100 dark:border-gray-700'
                   }`}
                 >
                   {msg.type === 'ai' ? formatMessage(msg.content) : msg.content}
                 </div>
                 {msg.type === 'user' && (
-                  <User size={20} className="text-primary mt-1 flex-shrink-0" />
+                  <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                    <User size={16} className="text-white" />
+                  </div>
                 )}
               </div>
             ))}
 
             {isLoading && (
-              <div className="flex gap-2 justify-start">
-                <Bot size={20} className="text-primary mt-1 flex-shrink-0" />
-                <div className="bg-gray-100 dark:bg-gray-700 p-2 rounded-lg">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+              <div className="flex gap-2 justify-start animate-fade-in">
+                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Bot size={18} className="text-primary" />
+                </div>
+                <div className="bg-white dark:bg-gray-800 p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+                  <div className="flex space-x-2">
+                    <div className="w-2 h-2 bg-primary rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                    <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
                   </div>
                 </div>
               </div>
             )}
+            <div ref={messagesEndRef} />
           </div>
 
           {/* Input */}
-          <form onSubmit={handleSubmit} className="p-3 border-t">
-            <div className="flex gap-2">
+          <form onSubmit={handleSubmit} className="p-3 border-t dark:border-gray-700 bg-white dark:bg-gray-800">
+            <div className="flex gap-2 items-center">
               <input
                 type="text"
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 placeholder="Ask about accessibility..."
-                className="flex-1 border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 disabled={isLoading}
               />
               <button
                 type="submit"
                 disabled={isLoading || !inputMessage.trim()}
-                className="bg-primary text-primary-foreground p-1 rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="bg-primary text-primary-foreground p-2 rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Send message"
               >
-                <Send size={16} />
+                <Send size={18} />
               </button>
             </div>
           </form>
