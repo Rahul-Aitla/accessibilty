@@ -1,6 +1,7 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
+import html2pdf from 'html2pdf.js';
 
 import VisualHighlightOverlay from './VisualHighlightOverlay';
 
@@ -181,6 +182,61 @@ export default function ResultsDashboard({ result }) {
     toast.success('Shareable link copied!');
     setGenerating(false);
   };
+  
+  // Export to PDF function
+  const downloadPDF = () => {
+    const element = document.createElement('div');
+    element.innerHTML = `
+      <div style="padding: 20px; font-family: Arial, sans-serif;">
+        <h1 style="color: #333;">Accessibility Report</h1>
+        <p><strong>URL:</strong> ${result.url}</p>
+        <p><strong>Generated:</strong> ${new Date().toLocaleString()}</p>
+        <p><strong>Score:</strong> ${score}/100 (${badgeText})</p>
+        
+        <h2 style="margin-top: 20px;">Issues Summary</h2>
+        <p>Total issues found: ${total}</p>
+        
+        <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+          <thead>
+            <tr style="background-color: #f3f3f3;">
+              <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Issue</th>
+              <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Description</th>
+              <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Severity</th>
+              <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Suggestion</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${violations.map(issue => `
+              <tr>
+                <td style="padding: 8px; border: 1px solid #ddd;">${issue.help}</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">${issue.description}</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">${issue.impact || 'Unknown'}</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">${issue.nodes[0]?.any?.[0]?.message || '-'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        
+        ${result.improvementSuggestions ? `
+          <h2 style="margin-top: 20px;">AI Improvement Suggestions</h2>
+          <div style="padding: 10px; background-color: #f9f9f9; border-left: 4px solid #4a90e2;">
+            ${result.improvementSuggestions}
+          </div>
+        ` : ''}
+      </div>
+    `;
+    
+    const opt = {
+      margin: 10,
+      filename: `accessibility-report-${new Date().toISOString().split('T')[0]}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    
+    html2pdf().from(element).set(opt).save();
+    toast.success('PDF report downloaded successfully');
+  };
 
   // Check overlay permission after iframe loads
   const handleIframeLoad = () => {
@@ -263,6 +319,12 @@ export default function ResultsDashboard({ result }) {
           Download CSV
         </button>
         <button
+          className="px-5 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold shadow focus:outline-none focus:ring-2 focus:ring-green-400 transition"
+          onClick={downloadPDF}
+        >
+          Download PDF
+        </button>
+        <button
           className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold shadow focus:outline-none focus:ring-2 focus:ring-blue-400 transition disabled:opacity-60"
           onClick={handleCopyShareLink}
           disabled={generating}
@@ -294,6 +356,21 @@ export default function ResultsDashboard({ result }) {
           )}
         </div>
       </div>
+
+      {/* AI Improvement Suggestions */}
+      {result.improvementSuggestions && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-6 shadow mb-8">
+          <h3 className="text-xl font-bold mb-2 flex items-center gap-2">
+            <span className="inline-block w-2 h-8 bg-blue-500 rounded-l"></span>
+            AI Improvement Suggestions
+          </h3>
+          <div className="prose dark:prose-invert max-w-none">
+            {result.improvementSuggestions.split('\n').map((line, i) => (
+              <p key={i} className="mb-2">{line}</p>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Brand Color Issues */}
       {brandColorIssues.length > 0 && (

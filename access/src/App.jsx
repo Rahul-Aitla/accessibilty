@@ -147,6 +147,29 @@ function App() {
       }
       
       const resultObj = { url: url.trim(), ...data, date: new Date().toISOString() };
+      
+      // Get AI improvement suggestions
+      try {
+        const suggestionRes = await fetch(`${API_URL}/api/gemini-suggestion`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            url: url.trim(),
+            scanResult: data
+          })
+        });
+        
+        if (suggestionRes.ok) {
+          const suggestionData = await suggestionRes.json();
+          if (suggestionData.suggestion) {
+            resultObj.improvementSuggestions = suggestionData.suggestion;
+          }
+        }
+      } catch (suggestionError) {
+        console.warn('Failed to get AI suggestions:', suggestionError);
+        // Non-blocking error - we'll continue without suggestions
+      }
+      
       setScanResult(resultObj);
       setHistory(prev => {
         const newHistory = [resultObj, ...prev.filter(item => item.url !== url.trim())].slice(0, 10);
