@@ -14,11 +14,11 @@ async function getShareableLink(result, apiUrl) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(result)
     });
-    
+
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     }
-    
+
     const data = await res.json();
     if (data.id) {
       return `${base}?report=${data.id}`;
@@ -43,7 +43,7 @@ function downloadCSV(violations, url) {
     toast.error('No violations to export');
     return;
   }
-  
+
   try {
     const headers = [
       'Issue', 'Description', 'Impact', 'WCAG', 'Selector', 'Snippet', 'Help URL'
@@ -57,19 +57,19 @@ function downloadCSV(violations, url) {
       (issue.nodes?.[0]?.html || '').replace(/\n/g, ' ').slice(0, 100) || 'No HTML snippet',
       issue.helpUrl || ''
     ]);
-    
+
     const csvContent = [
       [`Scanned URL: ${url || 'Unknown'}`],
       [`Generated: ${new Date().toISOString()}`],
       [],
       headers,
       ...rows
-    ].map(row => 
-      row.map(field => 
+    ].map(row =>
+      row.map(field =>
         '"' + String(field).replace(/"/g, '""') + '"'
       ).join(',')
     ).join('\r\n');
-    
+
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url_obj = URL.createObjectURL(blob);
@@ -78,10 +78,10 @@ function downloadCSV(violations, url) {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
+
     // Clean up the object URL to prevent memory leaks
     setTimeout(() => URL.revokeObjectURL(url_obj), 100);
-    
+
     toast.success('CSV report downloaded successfully');
   } catch (error) {
     console.error('Failed to download CSV:', error);
@@ -106,7 +106,7 @@ const severityChartColors = {
 
 function groupBySeverity(violations) {
   if (!violations?.length) return { critical: [], serious: [], moderate: [], minor: [] };
-  
+
   const groups = { critical: [], serious: [], moderate: [], minor: [] };
   violations.forEach(v => {
     const severity = v.impact || 'minor'; // Default to minor if no impact specified
@@ -137,16 +137,16 @@ export default function ResultsDashboard({ result }) {
       issues.filter(issue => {
         // Filter by severity
         const matchesSeverity = filter === 'all' || issue.impact === filter;
-        
+
         // Search filter with null safety
         const matchesSearch = !search || [
           issue.help,
           issue.description,
           issue.nodes?.[0]?.target?.join(' ')
-        ].some(field => 
+        ].some(field =>
           field && field.toLowerCase().includes(search.toLowerCase())
         );
-        
+
         return matchesSeverity && matchesSearch;
       })
     ])
@@ -182,7 +182,7 @@ export default function ResultsDashboard({ result }) {
     toast.success('Shareable link copied!');
     setGenerating(false);
   };
-  
+
   // Export to PDF function
   const downloadPDF = () => {
     const element = document.createElement('div');
@@ -225,7 +225,7 @@ export default function ResultsDashboard({ result }) {
         ` : ''}
       </div>
     `;
-    
+
     const opt = {
       margin: 10,
       filename: `accessibility-report-${new Date().toISOString().split('T')[0]}.pdf`,
@@ -233,7 +233,7 @@ export default function ResultsDashboard({ result }) {
       html2canvas: { scale: 2 },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
-    
+
     html2pdf().from(element).set(opt).save();
     toast.success('PDF report downloaded successfully');
   };
@@ -287,12 +287,11 @@ export default function ResultsDashboard({ result }) {
                   <td className="py-2 px-4 font-bold text-gray-900 dark:text-white">{issue.help}</td>
                   <td className="py-2 px-4 text-gray-700 dark:text-gray-200">{issue.description}</td>
                   <td className="py-2 px-4">
-                    <span className={`inline-block px-3 py-1 rounded-full font-semibold text-xs ${
-                      issue.impact === 'critical' ? 'bg-red-100 text-red-700' :
-                      issue.impact === 'serious' ? 'bg-orange-100 text-orange-700' :
-                      issue.impact === 'moderate' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-blue-100 text-blue-700'
-                    }`}>
+                    <span className={`inline-block px-3 py-1 rounded-full font-semibold text-xs ${issue.impact === 'critical' ? 'bg-red-100 text-red-700' :
+                        issue.impact === 'serious' ? 'bg-orange-100 text-orange-700' :
+                          issue.impact === 'moderate' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-blue-100 text-blue-700'
+                      }`}>
                       {issue.impact?.charAt(0).toUpperCase() + issue.impact?.slice(1) || 'Unknown'}
                     </span>
                   </td>
@@ -384,12 +383,12 @@ export default function ResultsDashboard({ result }) {
                 {issue.type === 'contrast' && (
                   <>
                     <div className="text-xs">Element: <code className="bg-gray-200 dark:bg-gray-700 px-1 rounded">{issue.element}</code></div>
-                    <div className="text-xs">Color: <span style={{color: issue.color}}>{issue.color}</span> on <span style={{background: issue.background, color: '#222', padding: '0 4px', borderRadius: '2px'}}>{issue.background}</span></div>
+                    <div className="text-xs">Color: <span style={{ color: issue.color }}>{issue.color}</span> on <span style={{ background: issue.background, color: '#222', padding: '0 4px', borderRadius: '2px' }}>{issue.background}</span></div>
                     <div className="text-xs">Contrast Ratio: <span className="font-mono">{issue.contrast.toFixed(2)}</span></div>
                   </>
                 )}
                 {issue.type === 'usage' && (
-                  <div className="text-xs">Brand: <span style={{color: issue.brand}}>{issue.brand}</span></div>
+                  <div className="text-xs">Brand: <span style={{ color: issue.brand }}>{issue.brand}</span></div>
                 )}
               </li>
             ))}
